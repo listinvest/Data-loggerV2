@@ -59,7 +59,7 @@ int state = HIGH;  //LED is high to start
 int logDataSwitch = 1; //how to run logging loop
 int reading;  //button reading
 int previous = HIGH; //button previous reading 
-long debounce = 200;  //mS for debounce 
+long debounce = 2000;  //uS for debounce 
 int x;
 //
 // Digital pin to indicate an error, set to -1 if not used.
@@ -69,7 +69,7 @@ int x;
 #ifdef ERROR_LED_PIN
 #undef ERROR_LED_PIN
 #endif  // ERROR_LED_PIN
-const int8_t ERROR_LED_PIN = -1;
+const int8_t ERROR_LED_PIN = 13;
 //------------------------------------------------------------------------------
 // File definitions.
 //
@@ -682,25 +682,36 @@ void loop(void) {
 
    reading = digitalRead(button); 
   // read button state, notify if a change
-  if (reading == LOW && previous == HIGH /*&& millis() - Millisec > debounce*/){  
+  if (reading == HIGH && previous == LOW && micros() - Micro > debounce){  
     // A button change has been read, now adjust to opposing position  
     if (state == HIGH){
       state = LOW;
-      //logDataSwitch = 0;
-      void logData(); 
+      logDataSwitch = 0;  //ACQUIRE DATA
+      digitalWrite(13, HIGH);
       
     }
     else {
       state = HIGH;   
-      logDataSwitch = 1; 
+      logDataSwitch = 1; //Turn off data log 
       //logfile.flush();
      //FILE_BASE_NAME.close();  //must save and close file to flush out RAM to card
-
-     Millisec = millis();  //for debounce 
-     delay(200);
     }
+     
+     //Millisec = millis();  //for debounce 
+     Micro = micros(); //for debounce
+    
  }
 
     digitalWrite(ledPin, state);  //led on/off
     previous = reading; //reset previous
+  // Turn datalogging on/off
+  if (logDataSwitch == 0){
+    void logData(); 
+    //Serial.print("log data");
+  }
+  else{
+    digitalWrite(13, LOW);
+    //Serial.print("not logging");
+  }
+  
 }
