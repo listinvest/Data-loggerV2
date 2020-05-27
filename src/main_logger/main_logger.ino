@@ -9,6 +9,12 @@
 #include "freertos/task.h"
 #include "esp_system.h"
 #include <SdFat.h>
+#include <sdios.h>
+//#include <SD.h>
+#include <Adafruit_LIS3DH.h>
+#include <Adafruit_Sensor.h>
+#include <Arduino.h>
+#include <Wire.h>
 
 // interval between points in units of 1024 usec
 const uint16_t intervalTicks = 10;
@@ -17,8 +23,22 @@ const uint16_t intervalTicks = 10;
 const uint8_t sdChipSelect = 33;
 SdFat sd;
 SdFile file;
+//SD sd;
+//File file; 
 //------------------------------------------------------------------------------
-// Fifo definitions
+// Accel Lis3dh definitions, I2C
+#define LIS3DH_CS 16 //should be 32  //ESP32: 14/A6 , Cortex m0: 5, Use for upper accel, hbar, seatpost, etc.
+//#define LIS3DH_CS2 15  //ESP32: 15/A8, Cortex m0: 9, Use for lower accel, axles, etc. 
+// SPI
+//Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS);
+// Sensor 1 
+Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS);
+// Sensor 2 
+// hardware SPI 2
+//Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH_CS2);
+
+
+// Fifo definitions -------------------------------------------------------------
 
 // size of fifo in records
 const size_t FIFO_SIZE = 20;
@@ -67,9 +87,12 @@ static void Task1(void *arg) {
     p->usec = micros();
     
     // replace next line with data read from sensor such as
-    // p->value = analogRead(0);
-    p->value = count++;
-    
+    p->value = analogRead(0);
+    // p->value = count++;
+    /* Get a new sensor event */ 
+    //sensors_event_t event; 
+    //lis.getEvent(&event);
+    //p->value = event.acceleration.y; 
     p->error = error;
     error = 0;
     
@@ -83,6 +106,7 @@ static void Task1(void *arg) {
 //------------------------------------------------------------------------------
 // SD write task
 static void Task2(void *arg) {
+   
   // FIFO index for record to be written
   size_t fifoTail = 0;
   
@@ -134,17 +158,28 @@ static void Task2(void *arg) {
 void setup() {
   // task creation status
   portBASE_TYPE s1, s2;
-  
-  Serial.begin(9600);
+
+SPI.begin(); 
+SPI.beginTransaction(SPISettings(15000000, MSBFIRST, SPI_MODE0));
+
+  // Set accel range  
+lis.setRange(LIS3DH_RANGE_16_G);   // 2, 4, 8 or 16 G!
+//lis2.setRange(LIS3DH_RANGE_16_G);
+// Set DataRate
+lis.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); //OPTIONS:  LIS3DH_DATARATE_400_HZ, LIS3DH_DATARATE_LOWPOWER_1K6HZ, LIS3DH_DATARATE_LOWPOWER_5KHZ
+//lis2.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); 
+
+  Serial.begin(115200);
   Serial.println(F("Type any character to begin"));
   while(!Serial.available()); 
-  
+
   // open file
   if (!sd.begin(sdChipSelect)
     || !file.open("DATA.CSV", O_CREAT | O_WRITE | O_TRUNC)) {
     Serial.println(F("SD problem"));
     sd.errorHalt();
-  }
+    }
+ 
   // initialize fifoData semaphore to no data available
   fifoData = xSemaphoreCreateCounting(FIFO_SIZE, 0);
   
