@@ -18,15 +18,42 @@
 #define LED_BUILTIN 13
 #endif
 
+//------------------------------------------------------------------------------
+// SD file definitions
+const uint8_t sdChipSelect = 33;
+SdFat sd;
+SdFile file;
+//------------------------------------------------------------------------------
+// Fifo definitions
+
+// size of fifo in records
+const size_t FIFO_SIZE = 20;
+
+// count of data records in fifo
+SemaphoreHandle_t fifoData;
+
+// count of free buffers in fifo
+SemaphoreHandle_t fifoSpace;
+
+// data type for fifo item
+struct FifoItem_t {
+  uint32_t usec;  
+  int value;
+  int error;
+};
+// array of data items
+FifoItem_t fifoArray[FIFO_SIZE];
+//------------------------------------------------------------------------------
 // Accel Lis3dh definitions, I2C
 #define LIS3DH_CS 16 //should be 32  //ESP32: 14/A6 , Cortex m0: 5, Use for upper accel, hbar, seatpost, etc.
 // Sensor I2C 
 Adafruit_LIS3DH lis = Adafruit_LIS3DH();
-
-// define two tasks for Blink & AnalogRead
+//------------------------------------------------------------------------------
+// define two tasks for Sensor Data and SD Write
 void TaskGetData( void *pvParameters );
 //void TaskSDWrite( void *pvParameters );
 
+//------------------------------------------------------------------------------
 // the setup function runs once when you press reset or power the board
 void setup() {
 
@@ -46,17 +73,27 @@ void setup() {
   lis.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); //OPTIONS:  LIS3DH_DATARATE_400_HZ, LIS3DH_DATARATE_LOWPOWER_1K6HZ, LIS3DH_DATARATE_LOWPOWER_5KHZ
   //lis2.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); 
 
+   // open file
+  if (!sd.begin(sdChipSelect)
+    || !file.open("DATA.CSV", O_CREAT | O_WRITE | O_TRUNC)) {
+    Serial.println(F("SD problem"));
+    sd.errorHalt();
+  }
+  // initialize fifoData semaphore to no data available
+  fifoData = xSemaphoreCreateCounting(FIFO_SIZE, 0);
   
+  // initialize fifoSpace semaphore to FIFO_SIZE free records
+  fifoSpace = xSemaphoreCreateCounting(FIFO_SIZE, FIFO_SIZE);
 
   
-// Setup up Taks and where to run ============================================================  
+  // Setup up Tasks and where to run ============================================================  
   // Now set up two tasks to run independently.
   xTaskCreatePinnedToCore(
     TaskGetData
     ,  "GetData"   // A name just for humans
-    ,  2048  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  1800  // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
-    ,  2  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
     ,  ARDUINO_RUNNING_CORE);
 
@@ -65,7 +102,7 @@ void setup() {
     ,  "SDWrite"
     ,  1024  // Stack size
     ,  NULL
-    ,  1  // Priority
+    ,  2  // Priority
     ,  NULL 
     ,  ARDUINO_RUNNING_CORE);
 
@@ -84,13 +121,9 @@ void loop()
 void TaskGetData(void *pvParameters)  // This is a task.
 {
   (void) pvParameters;
-    
-  // initialize digital LED_BUILTIN on pin 13 as an output.
-  //pinMode(LED_BUILTIN, OUTPUT);
 
   for (;;) // A Task shall never return or exit.
   {
-    
     //Get Event
     //lis.read();
     sensors_event_t event; 
@@ -100,7 +133,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
     Serial.print("\tY: "); Serial.print(event.acceleration.y);
     Serial.print("\tZ: "); Serial.print(event.acceleration.z);
     Serial.println(); 
-    //vTaskDelay(1000);  // one tick delay (15ms) in between reads for stability
+    vTaskDelay(1);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
     
     //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
     //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
@@ -112,23 +145,47 @@ void TaskGetData(void *pvParameters)  // This is a task.
 void TaskSDWrite(void *pvParameters)  // This is a task.
 {
   (void) pvParameters;
-  
-/*
-  AnalogReadSerial
-  Reads an analog input on pin A3, prints the result to the serial monitor.
-  Graphical representation is available using serial plotter (Tools > Serial Plotter menu)
-  Attach the center pin of a potentiometer to pin A3, and the outside pins to +5V and ground.
-
-  This example code is in the public domain.
-*/
 
   for (;;)
   {
-    // read the input on analog pin A3:
-    int sensorValueA3 = analogRead(A3);
-    // print out the value you read:
-    //Serial.println(sensorValueA3);
-    vTaskDelay(10);  // one tick delay (15ms) in between reads for stability
-  }
+    // SD write task
+    // FIFO index for record to be written
+  size_t fifoTail = 0;
   
+  // time in micros of last point
+  uint32_t last = 0;  
+  
+  while(1) {
+    // wait for next data record
+    xSemaphoreTake(fifoData, portMAX_DELAY);
+    
+    FifoItem_t* p = &fifoArray[fifoTail];
+
+    // print interval between points
+    if (last) {
+      file.print(p->usec - last);
+    } else {
+      file.write("NA");
+    }
+    last = p->usec;
+    file.write(',');
+    file.print(p->value);
+    file.write(',');
+    file.println(p->error);
+
+    // release record
+    xSemaphoreGive(fifoSpace);
+    
+    // advance FIFO index
+    fifoTail = fifoTail < (FIFO_SIZE - 1) ? fifoTail + 1 : 0;
+    
+    // check for end run
+    if (Serial.available()) {
+      // close file to insure data is saved correctly
+      file.close();
+      
+      while(1);
+  }
+ }
+} 
 }
