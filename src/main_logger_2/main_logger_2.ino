@@ -27,22 +27,22 @@ SdFile file;
 // Fifo definitions
 
 // size of fifo in records
-const size_t FIFO_SIZE = 20;
+//const size_t FIFO_SIZE = 20;
 
 // count of data records in fifo
-SemaphoreHandle_t fifoData;
+//SemaphoreHandle_t fifoData;
 
 // count of free buffers in fifo
-SemaphoreHandle_t fifoSpace;
+//SemaphoreHandle_t fifoSpace;
 
 // data type for fifo item
-struct FifoItem_t {
-  uint32_t usec;  
-  int value;
-  int error;
-};
+//struct FifoItem_t {
+//  uint32_t usec;  
+//  int value;
+//  int error;
+//};
 // array of data items
-FifoItem_t fifoArray[FIFO_SIZE];
+//FifoItem_t fifoArray[FIFO_SIZE];
 //------------------------------------------------------------------------------
 // Accel Lis3dh definitions, I2C
 #define LIS3DH_CS 16 //should be 32  //ESP32: 14/A6 , Cortex m0: 5, Use for upper accel, hbar, seatpost, etc.
@@ -73,17 +73,24 @@ void setup() {
   lis.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); //OPTIONS:  LIS3DH_DATARATE_400_HZ, LIS3DH_DATARATE_LOWPOWER_1K6HZ, LIS3DH_DATARATE_LOWPOWER_5KHZ
   //lis2.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); 
 
-   // open file
-  if (!sd.begin(sdChipSelect)
-    || !file.open("DATA.CSV", O_CREAT | O_WRITE | O_TRUNC)) {
-    Serial.println(F("SD problem"));
-    sd.errorHalt();
-  }
+
+  // see if the card is present and can be initialized:  (Use highest SD clock possible, but lower if has error, 15 Mhz works, possible to go to to 50 Mhz if sample rate is low enough
+ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
+   Serial.println("Card init. failed!");
+    //error(2);
+   }
+   
+  // open file
+  //if (!sd.begin(sdChipSelect)) 
+  //  || !file.open("DATA.CSV", O_CREAT | O_WRITE | O_TRUNC)) {
+  //  Serial.println(F("SD problem"));
+  //  sd.errorHalt();
+  //  }
   // initialize fifoData semaphore to no data available
-  fifoData = xSemaphoreCreateCounting(FIFO_SIZE, 0);
+  //fifoData = xSemaphoreCreateCounting(FIFO_SIZE, 0);
   
   // initialize fifoSpace semaphore to FIFO_SIZE free records
-  fifoSpace = xSemaphoreCreateCounting(FIFO_SIZE, FIFO_SIZE);
+  //fifoSpace = xSemaphoreCreateCounting(FIFO_SIZE, FIFO_SIZE);
 
   
   // Setup up Tasks and where to run ============================================================  
@@ -133,7 +140,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
     Serial.print("\tY: "); Serial.print(event.acceleration.y);
     Serial.print("\tZ: "); Serial.print(event.acceleration.z);
     Serial.println(); 
-    vTaskDelay(1);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
+    vTaskDelay(1000);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
     
     //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
     //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
@@ -141,20 +148,22 @@ void TaskGetData(void *pvParameters)  // This is a task.
     //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
   }
 }
-
+//------------------------------------------------------------------------------
 void TaskSDWrite(void *pvParameters)  // This is a task.
 {
   (void) pvParameters;
 
   for (;;)
   {
+ 
+    
     // SD write task
     // FIFO index for record to be written
   size_t fifoTail = 0;
   
   // time in micros of last point
   uint32_t last = 0;  
-  
+  /*
   while(1) {
     // wait for next data record
     xSemaphoreTake(fifoData, portMAX_DELAY);
@@ -184,8 +193,8 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       // close file to insure data is saved correctly
       file.close();
       
-      while(1);
+      while(1);*/
   }
  }
-} 
-}
+//} 
+//}
