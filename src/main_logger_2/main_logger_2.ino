@@ -23,6 +23,7 @@
 const uint8_t sdChipSelect = 33;
 SdFat sd;
 SdFile file;
+File logfile;
 //------------------------------------------------------------------------------
 // Fifo definitions
 
@@ -79,7 +80,34 @@ void setup() {
    Serial.println("Card init. failed!");
     //error(2);
    }
-   
+
+// Create filename scheme ====================================================================
+  char filename[15];
+  //  Setup filename to be appropriate for what you are testing
+  strcpy(filename, "/WARBIRD00.TXT");
+  for (uint8_t i = 0; i < 100; i++) {
+    filename[8] = '0' + i/10;
+    filename[9] = '0' + i%10;
+    // create if does not exist, do not open existing, write, sync after write
+    if (! sd.exists(filename)) {
+      break;
+    }
+  }
+
+// Create file and prepare it ============================================================
+  logfile = sd.open(filename, FILE_WRITE);
+  if( ! logfile ) {
+    Serial.print("Couldnt create "); 
+    Serial.println(filename);
+    //error(3);
+  }
+  Serial.print("Writing to "); 
+  Serial.println(filename);
+
+  pinMode(13, OUTPUT);
+  Serial.println("Ready!");
+
+     
   // open file
   //if (!sd.begin(sdChipSelect)) 
   //  || !file.open("DATA.CSV", O_CREAT | O_WRITE | O_TRUNC)) {
