@@ -14,10 +14,6 @@
 //#include "freertos/task.h"
 //#include "esp_system.h"
 
-#ifndef LED_BUILTIN
-#define LED_BUILTIN 13
-#endif
-
 //------------------------------------------------------------------------------
 // SD file definitions
 const uint8_t sdChipSelect = 33;
@@ -28,22 +24,26 @@ File logfile;
 // Fifo definitions
 
 // size of fifo in records
-//const size_t FIFO_SIZE = 20;
+const size_t FIFO_SIZE = 200;
 
 // count of data records in fifo
-//SemaphoreHandle_t fifoData;
+SemaphoreHandle_t fifoData;
 
 // count of free buffers in fifo
-//SemaphoreHandle_t fifoSpace;
+SemaphoreHandle_t fifoSpace;
 
 // data type for fifo item
-//struct FifoItem_t {
-//  uint32_t usec;  
-//  int value;
-//  int error;
-//};
+struct FifoItem_t {
+  uint32_t usec;  
+  uint32_t value;
+  int error;
+};
+
+// interval between points in units of 1000 usec
+const uint16_t intervalTicks = 1;
+
 // array of data items
-//FifoItem_t fifoArray[FIFO_SIZE];
+FifoItem_t fifoArray[FIFO_SIZE];
 //------------------------------------------------------------------------------
 // Accel Lis3dh definitions, I2C
 #define LIS3DH_CS 16 //should be 32  //ESP32: 14/A6 , Cortex m0: 5, Use for upper accel, hbar, seatpost, etc.
@@ -52,7 +52,7 @@ Adafruit_LIS3DH lis = Adafruit_LIS3DH();
 //------------------------------------------------------------------------------
 // define two tasks for Sensor Data and SD Write
 void TaskGetData( void *pvParameters );
-//void TaskSDWrite( void *pvParameters );
+void TaskSDWrite( void *pvParameters );
 
 //------------------------------------------------------------------------------
 // the setup function runs once when you press reset or power the board
@@ -61,12 +61,17 @@ void setup() {
   // initialize serial communication at 115200 bits per second:
   Serial.begin(115200);
 
+  //Outputs, Pins, Buttons, Etc. 
+  pinMode(13, OUTPUT);  //set Built in LED to show writing on SD Card
+  //pinMode(ledPin, OUTPUT);  //set LED to show when switched off
+  //pinMode(button, INPUT); //button to turn recording on/off
+
+  //ACCEL Setup and RUN
   if (! lis.begin(0x18)) {   // change this to 0x19 for alternative i2c address
   Serial.println("Couldnt start");
   while (1) yield();
   }
   Serial.println("LIS3DH found!");
-
   // Set accel range  
   lis.setRange(LIS3DH_RANGE_16_G);   // 2, 4, 8 or 16 G!
   //lis2.setRange(LIS3DH_RANGE_16_G);
@@ -74,12 +79,12 @@ void setup() {
   lis.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); //OPTIONS:  LIS3DH_DATARATE_400_HZ, LIS3DH_DATARATE_LOWPOWER_1K6HZ, LIS3DH_DATARATE_LOWPOWER_5KHZ
   //lis2.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); 
 
-
-  // see if the card is present and can be initialized:  (Use highest SD clock possible, but lower if has error, 15 Mhz works, possible to go to to 50 Mhz if sample rate is low enough
- if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
-   Serial.println("Card init. failed!");
-    //error(2);
-   }
+// SD CARD SETUP ====================================================================
+// see if the card is present and can be initialized:  (Use highest SD clock possible, but lower if has error, 15 Mhz works, possible to go to to 50 Mhz if sample rate is low enough
+if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
+  Serial.println("Card init. failed!");
+  //error(2);
+}
 
 // Create filename scheme ====================================================================
   char filename[15];
@@ -96,6 +101,7 @@ void setup() {
 
 // Create file and prepare it ============================================================
   logfile = sd.open(filename, FILE_WRITE);
+  //file.open(filename, O_CREAT | O_WRITE | O_TRUNC);
   if( ! logfile ) {
     Serial.print("Couldnt create "); 
     Serial.println(filename);
@@ -107,22 +113,23 @@ void setup() {
   pinMode(13, OUTPUT);
   Serial.println("Ready!");
 
-     
+  // initialize fifoData semaphore to no data available
+  fifoData = xSemaphoreCreateCounting(FIFO_SIZE, 0);
+  
+  // initialize fifoSpace semaphore to FIFO_SIZE free records
+  fifoSpace = xSemaphoreCreateCounting(FIFO_SIZE, FIFO_SIZE);    
+  
+  
   // open file
   //if (!sd.begin(sdChipSelect)) 
   //  || !file.open("DATA.CSV", O_CREAT | O_WRITE | O_TRUNC)) {
   //  Serial.println(F("SD problem"));
   //  sd.errorHalt();
   //  }
-  // initialize fifoData semaphore to no data available
-  //fifoData = xSemaphoreCreateCounting(FIFO_SIZE, 0);
-  
-  // initialize fifoSpace semaphore to FIFO_SIZE free records
-  //fifoSpace = xSemaphoreCreateCounting(FIFO_SIZE, FIFO_SIZE);
 
-  
-  // Setup up Tasks and where to run ============================================================  
-  // Now set up two tasks to run independently.
+ 
+// Setup up Tasks and where to run ============================================================  
+// Now set up two tasks to run independently.
   xTaskCreatePinnedToCore(
     TaskGetData
     ,  "GetData"   // A name just for humans
@@ -135,13 +142,18 @@ void setup() {
   xTaskCreatePinnedToCore(
     TaskSDWrite
     ,  "SDWrite"
-    ,  1024  // Stack size
+    ,  2048  // Stack size
     ,  NULL
     ,  2  // Priority
     ,  NULL 
     ,  ARDUINO_RUNNING_CORE);
 
-  // Now the task scheduler, which takes over control of scheduling individual tasks, is automatically started.
+// Now the task scheduler, which takes over control of scheduling individual tasks, is automatically started.
+// start scheduler (I might not need this, old version???)
+//vTaskStartScheduler();
+//Serial.println(F("Insufficient RAM"));
+// while(1);
+
 }
 
 void loop()
@@ -159,16 +171,55 @@ void TaskGetData(void *pvParameters)  // This is a task.
 
   for (;;) // A Task shall never return or exit.
   {
+    // index of record to be filled
+    size_t fifoHead = 0;
+
+    // count of overrun errors
+    int error = 0;
+
+    // dummy data
+    int count = 0;
+
+    // initialise the ticks variable with the current time.
+    TickType_t ticks = xTaskGetTickCount();
+
+    while (1) {
+    // wait until time for next data point
+    vTaskDelayUntil(&ticks, intervalTicks);
+
+    // get a buffer
+    if (xSemaphoreTake(fifoSpace, 0) != pdTRUE) {
+      // fifo full - indicate missed point
+      error++;
+      continue;
+    }
+    FifoItem_t* p = &fifoArray[fifoHead];
+    p->usec = micros();
+
+    // replace next line with data read from sensor
+    sensors_event_t event;
+    lis.getEvent(&event);
+    p->value = event.acceleration.y;
+
+    p->error = error;
+    error = 0;
+
+    // signal new data
+    xSemaphoreGive(fifoData);
+
+    // advance FIFO index
+    fifoHead = fifoHead < (FIFO_SIZE - 1) ? fifoHead + 1 : 0;
+    
     //Get Event
     //lis.read();
-    sensors_event_t event; 
-    lis.getEvent(&event);
+    //sensors_event_t event; 
+    //lis.getEvent(&event);
     //Serial.print("X:  "); Serial.print(lis.x);
-    Serial.print("\t\tX: "); Serial.print(event.acceleration.x);
-    Serial.print("\tY: "); Serial.print(event.acceleration.y);
-    Serial.print("\tZ: "); Serial.print(event.acceleration.z);
-    Serial.println(); 
-    vTaskDelay(1000);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
+    //Serial.print("\tX: "); Serial.print(event.acceleration.x);
+    //Serial.print("\tY: "); Serial.print(event.acceleration.y);
+    //Serial.print("\tZ: "); Serial.print(event.acceleration.z);
+    //Serial.println(); 
+    //vTaskDelay(1000);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
     
     //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
     //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
@@ -176,22 +227,21 @@ void TaskGetData(void *pvParameters)  // This is a task.
     //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
   }
 }
+}
 //------------------------------------------------------------------------------
 void TaskSDWrite(void *pvParameters)  // This is a task.
 {
   (void) pvParameters;
-
-  for (;;)
-  {
- 
-    
     // SD write task
     // FIFO index for record to be written
   size_t fifoTail = 0;
   
   // time in micros of last point
   uint32_t last = 0;  
-  /*
+  
+  for (;;)
+  {
+ 
   while(1) {
     // wait for next data record
     xSemaphoreTake(fifoData, portMAX_DELAY);
@@ -200,15 +250,19 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
 
     // print interval between points
     if (last) {
-      file.print(p->usec - last);
+      logfile.print(p->usec - last);
     } else {
-      file.write("NA");
+      logfile.write("NA");
     }
     last = p->usec;
-    file.write(',');
-    file.print(p->value);
-    file.write(',');
-    file.println(p->error);
+    Serial.println(p->usec);
+    logfile.write(',');
+    logfile.print(p->value);
+    Serial.println(p->value);
+    //logfile.print(event.acceleration.x);
+    logfile.write(',');
+    logfile.println(p->error);
+    Serial.println(p->error);
 
     // release record
     xSemaphoreGive(fifoSpace);
@@ -217,12 +271,18 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
     fifoTail = fifoTail < (FIFO_SIZE - 1) ? fifoTail + 1 : 0;
     
     // check for end run
-    if (Serial.available()) {
+    //if (Serial.available()) {
       // close file to insure data is saved correctly
-      file.close();
+    //logfile.close();
+    logfile.flush(); 
+
+    //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
+    //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
+    //digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
+    //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
       
-      while(1);*/
-  }
+     // while(1);
+  //}
  }
-//} 
-//}
+} 
+}
