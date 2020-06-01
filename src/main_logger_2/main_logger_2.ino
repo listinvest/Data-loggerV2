@@ -3,6 +3,8 @@
 #else
 #define ARDUINO_RUNNING_CORE 1
 #endif
+const int TaskCore1  = 1;
+const int TaskCore0 = 0;
 
 //Libraries
 #include <Wire.h>
@@ -11,9 +13,11 @@
 #include <Adafruit_LIS3DH.h>
 #include <Adafruit_Sensor.h>
 #include <stdio.h>
-//#include "freertos/FreeRTOS.h"
-//#include "freertos/task.h"
-//#include "esp_system.h"
+#include "esp_system.h" //This inclusion configures the peripherals in the ESP system.
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/timers.h"
+#include "freertos/event_groups.h"
 
 //------------------------------------------------------------------------------
 // SD file definitions
@@ -25,7 +29,7 @@ File logfile;
 // Fifo definitions
 
 // size of fifo in records
-const size_t FIFO_SIZE = 200;
+const size_t FIFO_SIZE = 2000;
 
 // count of data records in fifo
 SemaphoreHandle_t fifoData;
@@ -37,7 +41,9 @@ SemaphoreHandle_t fifoSpace;
 struct FifoItem_t {
   uint32_t usec;  
   //unsigned long value;
-  float value; 
+  float valueX;
+  float valueY;
+  float valueZ; 
   int error;
 };
 
@@ -142,21 +148,21 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
 // Now set up two tasks to run independently.
   xTaskCreatePinnedToCore(
     TaskGetData
-    ,  "GetData"   // A name just for humans
-    ,  1800  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  "Get Data to Accel"   // A name just for humans
+    ,  10000  // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
     ,  2  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
-    ,  ARDUINO_RUNNING_CORE);
+    ,  TaskCore0);
 
   xTaskCreatePinnedToCore(
     TaskSDWrite
-    ,  "SDWrite"
-    ,  6000  // Stack size
+    ,  "Write Data to Card"
+    ,  10000 // Stack size
     ,  NULL
     ,  3  // Priority
     ,  NULL 
-    ,  ARDUINO_RUNNING_CORE);
+    ,  TaskCore1);
 
 // Now the task scheduler, which takes over control of scheduling individual tasks, is automatically started.
 // start scheduler (I might not need this, old version???)
@@ -187,9 +193,6 @@ void TaskGetData(void *pvParameters)  // This is a task.
     // count of overrun errors
     int error = 0;
 
-    // dummy data
-    int count = 0;
-
     // initialise the ticks variable with the current time.
     TickType_t ticks = xTaskGetTickCount();
 
@@ -210,7 +213,9 @@ void TaskGetData(void *pvParameters)  // This is a task.
     //Micro = micros(); 
     sensors_event_t event;
     lis.getEvent(&event);
-    p->value = event.acceleration.y;
+    p->valueX = event.acceleration.x;
+    p->valueY = event.acceleration.y;
+    p->valueZ = event.acceleration.z;
     //lis.read();
     //Ax = event.acceleration.x;
     //Ay = event.acceleration.y;
@@ -229,12 +234,12 @@ void TaskGetData(void *pvParameters)  // This is a task.
     
     //Get Event
     //lis.read();
-    //sensors_event_t event; 
-    //lis.getEvent(&event);
+    /*sensors_event_t event; 
+    lis.getEvent(&event);
     //Serial.print("X:  "); Serial.print(lis.x);
-    //Serial.print("\tX: "); Serial.print(event.acceleration.x);
-    //Serial.print("\tY: "); Serial.print(event.acceleration.y);
-    //Serial.print("\tZ: "); Serial.print(event.acceleration.z);
+    Serial.print("\tX: "); Serial.print(event.acceleration.x);
+    Serial.print("\tY: "); Serial.print(event.acceleration.y);
+    Serial.print("\tZ: "); Serial.print(event.acceleration.z);*/
     //Serial.println(); 
     //vTaskDelay(1000);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
     
@@ -266,16 +271,21 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
     FifoItem_t* p = &fifoArray[fifoTail];
 
     // print interval between points
-    if (last) {
+    /*if (last) {
       logfile.print(p->usec - last);
     } else {
       logfile.write("NA");
     }
-    last = p->usec;
+    last = p->usec;*/
+    logfile.print(p->usec); 
     Serial.println(p->usec);
     logfile.write(',');
-    logfile.print(p->value);
-    Serial.println(p->value);
+    logfile.print(p->valueX);
+    logfile.write(',');
+    logfile.print(p->valueY);
+    logfile.write(',');
+    logfile.print(p->valueZ);
+    Serial.println(p->valueZ);
     //logfile.print(event.acceleration.x);
     logfile.write(',');
     logfile.println(p->error);
