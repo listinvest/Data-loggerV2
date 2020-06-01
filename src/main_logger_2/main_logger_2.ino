@@ -5,6 +5,7 @@
 #endif
 
 //Libraries
+#include <Wire.h>
 #include <SPI.h>
 #include <SdFat.h>
 #include <Adafruit_LIS3DH.h>
@@ -35,12 +36,21 @@ SemaphoreHandle_t fifoSpace;
 // data type for fifo item
 struct FifoItem_t {
   uint32_t usec;  
-  uint32_t value;
+  //unsigned long value;
+  float value; 
   int error;
 };
 
+//Counter
+//unsigned long Micro = 0; 
+
+//Accel Values
+//unsigned long Ax = 0;
+//unsigned long Ay = 0;
+//unsigned long Az = 0;
+
 // interval between points in units of 1000 usec
-const uint16_t intervalTicks = 1;
+const uint16_t intervalTicks = 1000;
 
 // array of data items
 FifoItem_t fifoArray[FIFO_SIZE];
@@ -135,16 +145,16 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
     ,  "GetData"   // A name just for humans
     ,  1800  // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
-    ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  2  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
     ,  ARDUINO_RUNNING_CORE);
 
   xTaskCreatePinnedToCore(
     TaskSDWrite
     ,  "SDWrite"
-    ,  2048  // Stack size
+    ,  6000  // Stack size
     ,  NULL
-    ,  2  // Priority
+    ,  3  // Priority
     ,  NULL 
     ,  ARDUINO_RUNNING_CORE);
 
@@ -197,9 +207,16 @@ void TaskGetData(void *pvParameters)  // This is a task.
     p->usec = micros();
 
     // replace next line with data read from sensor
+    //Micro = micros(); 
     sensors_event_t event;
     lis.getEvent(&event);
     p->value = event.acceleration.y;
+    //lis.read();
+    //Ax = event.acceleration.x;
+    //Ay = event.acceleration.y;
+    //Az = event.acceleration.z;
+    
+    //p->value = lis.x; 
 
     p->error = error;
     error = 0;
@@ -263,6 +280,15 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
     logfile.write(',');
     logfile.println(p->error);
     Serial.println(p->error);
+
+    /*logfile.print(Micro);
+    logfile.print("\t");
+    logfile.print(Ax);
+    logfile.print("\t");
+    logfile.print(Ay);
+    logfile.print("\t");
+    logfile.print(Az); 
+    logfile.println();*/
 
     // release record
     xSemaphoreGive(fifoSpace);
