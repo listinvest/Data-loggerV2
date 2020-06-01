@@ -56,7 +56,7 @@ struct FifoItem_t {
 //unsigned long Az = 0;
 
 // interval between points in units of 1000 usec
-const uint16_t intervalTicks = 1000;
+const uint16_t intervalTicks = 1;
 
 // array of data items
 FifoItem_t fifoArray[FIFO_SIZE];
@@ -278,18 +278,18 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
     }
     last = p->usec;*/
     logfile.print(p->usec); 
-    Serial.println(p->usec);
+    //Serial.println(p->usec);
     logfile.write(',');
     logfile.print(p->valueX);
     logfile.write(',');
     logfile.print(p->valueY);
     logfile.write(',');
     logfile.print(p->valueZ);
-    Serial.println(p->valueZ);
+    //Serial.println(p->valueZ);
     //logfile.print(event.acceleration.x);
     logfile.write(',');
     logfile.println(p->error);
-    Serial.println(p->error);
+    //Serial.println(p->error);
 
     /*logfile.print(Micro);
     logfile.print("\t");
