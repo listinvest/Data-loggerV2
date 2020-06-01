@@ -29,7 +29,7 @@ File logfile;
 // Fifo definitions
 
 // size of fifo in records
-const size_t FIFO_SIZE = 2000;
+const size_t FIFO_SIZE = 6000;
 
 // count of data records in fifo
 SemaphoreHandle_t fifoData;
@@ -46,16 +46,8 @@ struct FifoItem_t {
   //int error;
 };
 
-//Counter
-//unsigned long Micro = 0; 
-
-//Accel Values
-//unsigned long Ax = 0;
-//unsigned long Ay = 0;
-//unsigned long Az = 0;
-
 // interval between points in units of 1000 usec
-const uint16_t intervalTicks = 1;
+const uint16_t intervalTicks = 10;
 
 // array of data items
 FifoItem_t fifoArray[FIFO_SIZE];
@@ -68,8 +60,8 @@ Adafruit_LIS3DH lis = Adafruit_LIS3DH();
 // define two tasks for Sensor Data and SD Write
 void TaskGetData( void *pvParameters );
 void TaskSDWrite( void *pvParameters );
-
 //------------------------------------------------------------------------------
+
 // the setup function runs once when you press reset or power the board
 void setup() {
 
@@ -104,10 +96,10 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
 // Create filename scheme ====================================================================
   char filename[15];
   //  Setup filename to be appropriate for what you are testing
-  strcpy(filename, "/WARBIRD00.TXT");
+  strcpy(filename, "/DATA00.TXT");
   for (uint8_t i = 0; i < 100; i++) {
-    filename[8] = '0' + i/10;
-    filename[9] = '0' + i%10;
+    filename[5] = '0' + i/10;
+    filename[6] = '0' + i%10;
     // create if does not exist, do not open existing, write, sync after write
     if (! sd.exists(filename)) {
       break;
@@ -133,16 +125,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
   
   // initialize fifoSpace semaphore to FIFO_SIZE free records
   fifoSpace = xSemaphoreCreateCounting(FIFO_SIZE, FIFO_SIZE);    
-  
-  
-  // open file
-  //if (!sd.begin(sdChipSelect)) 
-  //  || !file.open("DATA.CSV", O_CREAT | O_WRITE | O_TRUNC)) {
-  //  Serial.println(F("SD problem"));
-  //  sd.errorHalt();
-  //  }
 
- 
 // Setup up Tasks and where to run ============================================================  
 // Now set up two tasks to run independently.
   xTaskCreatePinnedToCore(
@@ -162,23 +145,15 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
     ,  3  // Priority
     ,  NULL 
     ,  TaskCore1);
-
-// Now the task scheduler, which takes over control of scheduling individual tasks, is automatically started.
-// start scheduler (I might not need this, old version???)
-//vTaskStartScheduler();
-//Serial.println(F("Insufficient RAM"));
-// while(1);
-
 }
 
 void loop()
 {
   // Empty. Things are done in Tasks.
-}
-
 /*--------------------------------------------------*/
 /*---------------------- Tasks ---------------------*/
 /*--------------------------------------------------*/
+}
 
 void TaskGetData(void *pvParameters)  // This is a task.
 {
@@ -215,15 +190,12 @@ void TaskGetData(void *pvParameters)  // This is a task.
     p->valueX = event.acceleration.x;
     p->valueY = event.acceleration.y;
     p->valueZ = event.acceleration.z;
-    //lis.read();
-    //Ax = event.acceleration.x;
-    //Ay = event.acceleration.y;
-    //Az = event.acceleration.z;
-    
-    //p->value = lis.x; 
-
-    //p->error = error;
-    //error = 0;
+    Serial.print(p->valueX,5);
+    Serial.write(',');
+    Serial.print(p->valueY,5);
+    Serial.write(',');
+    Serial.print(p->valueZ,5);
+    Serial.println();
 
     // signal new data
     xSemaphoreGive(fifoData);
@@ -231,15 +203,6 @@ void TaskGetData(void *pvParameters)  // This is a task.
     // advance FIFO index
     fifoHead = fifoHead < (FIFO_SIZE - 1) ? fifoHead + 1 : 0;
     
-    //Get Event
-    //lis.read();
-    /*sensors_event_t event; 
-    lis.getEvent(&event);
-    //Serial.print("X:  "); Serial.print(lis.x);
-    Serial.print("\tX: "); Serial.print(event.acceleration.x);
-    Serial.print("\tY: "); Serial.print(event.acceleration.y);
-    Serial.print("\tZ: "); Serial.print(event.acceleration.z);*/
-    //Serial.println(); 
     //vTaskDelay(1000);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
     
     //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
@@ -285,20 +248,15 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
     logfile.write(',');
     logfile.print(p->valueZ,5);
     logfile.println(); 
-    //Serial.println(p->valueZ);
-    //logfile.print(event.acceleration.x);
-    //logfile.write(',');
+    /*Serial.print(p->valueX,5);
+    Serial.write(',');
+    Serial.print(p->valueY,5);
+    logfile.write(',');
+    Serial.print(p->valueZ,5);
+    Serial.println();*/
+    
     //logfile.println(p->error);
     //Serial.println(p->error);
-
-    /*logfile.print(Micro);
-    logfile.print("\t");
-    logfile.print(Ax);
-    logfile.print("\t");
-    logfile.print(Ay);
-    logfile.print("\t");
-    logfile.print(Az); 
-    logfile.println();*/
 
     // release record
     xSemaphoreGive(fifoSpace);
