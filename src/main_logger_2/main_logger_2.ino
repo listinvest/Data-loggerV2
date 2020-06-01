@@ -40,11 +40,10 @@ SemaphoreHandle_t fifoSpace;
 // data type for fifo item
 struct FifoItem_t {
   uint32_t usec;  
-  //unsigned long value;
   float valueX;
   float valueY;
   float valueZ; 
-  int error;
+  //int error;
 };
 
 //Counter
@@ -223,8 +222,8 @@ void TaskGetData(void *pvParameters)  // This is a task.
     
     //p->value = lis.x; 
 
-    p->error = error;
-    error = 0;
+    //p->error = error;
+    //error = 0;
 
     // signal new data
     xSemaphoreGive(fifoData);
@@ -280,15 +279,16 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
     logfile.print(p->usec); 
     //Serial.println(p->usec);
     logfile.write(',');
-    logfile.print(p->valueX);
+    logfile.print(p->valueX,5);
     logfile.write(',');
-    logfile.print(p->valueY);
+    logfile.print(p->valueY,5);
     logfile.write(',');
-    logfile.print(p->valueZ);
+    logfile.print(p->valueZ,5);
+    logfile.println(); 
     //Serial.println(p->valueZ);
     //logfile.print(event.acceleration.x);
-    logfile.write(',');
-    logfile.println(p->error);
+    //logfile.write(',');
+    //logfile.println(p->error);
     //Serial.println(p->error);
 
     /*logfile.print(Micro);
