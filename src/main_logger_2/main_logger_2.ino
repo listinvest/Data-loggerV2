@@ -47,7 +47,7 @@ struct FifoItem_t {
 };
 
 // interval between points in units of 1000 usec
-const uint16_t intervalTicks = 10;
+const uint16_t intervalTicks = 1;
 
 // SD Buffer
 //uint16_t count = 0;
@@ -91,7 +91,7 @@ void setup() {
 
 // SD CARD SETUP ====================================================================
 // see if the card is present and can be initialized:  (Use highest SD clock possible, but lower if has error, 15 Mhz works, possible to go to to 50 Mhz if sample rate is low enough
-if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
+if (!sd.begin(sdChipSelect, SD_SCK_MHZ(25))) {
   Serial.println("Card init. failed!");
   //error(2);
 }
@@ -134,7 +134,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
   xTaskCreatePinnedToCore(
     TaskGetData
     ,  "Get Data to Accel"   // A name just for humans
-    ,  10000  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  8000  // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
     ,  2  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
@@ -143,7 +143,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
   xTaskCreatePinnedToCore(
     TaskSDWrite
     ,  "Write Data to Card"
-    ,  10000 // Stack size
+    ,  8000 // Stack size
     ,  NULL
     ,  3  // Priority
     ,  NULL 
