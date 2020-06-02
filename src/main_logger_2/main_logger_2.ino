@@ -1,8 +1,12 @@
-//#if CONFIG_FREERTOS_UNICORE
-//#define ARDUINO_RUNNING_CORE 0
-//#else
-//#define ARDUINO_RUNNING_CORE 1
-//#endif
+// Data logger:  For measuring acceleration from LIS3DH
+// Hardware:  Adafruit ESP32, Adalogger feather+RTC, 1x LIS3DH accels (Currently, 2x in future) 
+// Created:  May 12 2020
+// Updated:
+// Uses SPI for SD, I2C for Accels, hoping for 1000 Hz. sampling 
+// files are saves text files, csv = NNNNNNNN.TXT
+// See ReadME and photos for additional hook up info
+
+//Use ESP32 duo core
 const int TaskCore1  = 1;
 const int TaskCore0 = 0;
 
@@ -29,7 +33,7 @@ File logfile;
 // Fifo definitions
 
 // size of fifo in records
-const size_t FIFO_SIZE = 6000;
+const size_t FIFO_SIZE = 2000; //can go up to 6000
 
 // count of data records in fifo
 SemaphoreHandle_t fifoData;
@@ -43,7 +47,7 @@ struct FifoItem_t {
   float valueX;
   float valueY;
   float valueZ; 
-  //int error;
+  uint8_t error;
 };
 
 // interval between points in units of 1000 usec
@@ -134,7 +138,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(25))) {
   xTaskCreatePinnedToCore(
     TaskGetData
     ,  "Get Data to Accel"   // A name just for humans
-    ,  8000  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  10000  // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
     ,  2  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
@@ -143,7 +147,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(25))) {
   xTaskCreatePinnedToCore(
     TaskSDWrite
     ,  "Write Data to Card"
-    ,  8000 // Stack size
+    ,  10000 // Stack size
     ,  NULL
     ,  3  // Priority
     ,  NULL 
@@ -193,6 +197,10 @@ void TaskGetData(void *pvParameters)  // This is a task.
     p->valueX = event.acceleration.x;
     p->valueY = event.acceleration.y;
     p->valueZ = event.acceleration.z;
+    /*lis.read();
+    p->valueX = lis.x;
+    p->valueY = lis.y;
+    p->valueZ = lis.z;*/
     //Serial.print(p->valueX,5);
     //Serial.write(',');
     //Serial.print(p->valueY,5);
@@ -243,36 +251,31 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
     }
     last = p->usec;*/
     logfile.print(p->usec); 
-    //Serial.println(p->usec);
     logfile.write(',');
     logfile.print(p->valueX,5);
     logfile.write(',');
     logfile.print(p->valueY,5);
     logfile.write(',');
     logfile.print(p->valueZ,5);
+    logfile.print(',');
+    logfile.print(p->error);
     logfile.println(); 
     //count++; 
-    /*Serial.print(p->valueX,5);
+    /*Serial.println(p->usec);
+    Serial.print(p->valueX,5);
     Serial.write(',');
     Serial.print(p->valueY,5);
     logfile.write(',');
     Serial.print(p->valueZ,5);
+    //Serial.println(p->error);
     Serial.println();*/
     
-    //logfile.println(p->error);
-    //Serial.println(p->error);
-
     // release record
     xSemaphoreGive(fifoSpace);
     
     // advance FIFO index
     fifoTail = fifoTail < (FIFO_SIZE - 1) ? fifoTail + 1 : 0;
     
-    // check for end run
-    //if (Serial.available()) {
-      // close file to insure data is saved correctly
-    //logfile.close();
-
     //if (count == 512){
     logfile.flush(); 
     //count = 0;
