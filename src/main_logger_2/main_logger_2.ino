@@ -1,8 +1,8 @@
-#if CONFIG_FREERTOS_UNICORE
-#define ARDUINO_RUNNING_CORE 0
-#else
-#define ARDUINO_RUNNING_CORE 1
-#endif
+//#if CONFIG_FREERTOS_UNICORE
+//#define ARDUINO_RUNNING_CORE 0
+//#else
+//#define ARDUINO_RUNNING_CORE 1
+//#endif
 const int TaskCore1  = 1;
 const int TaskCore0 = 0;
 
@@ -48,6 +48,9 @@ struct FifoItem_t {
 
 // interval between points in units of 1000 usec
 const uint16_t intervalTicks = 10;
+
+// SD Buffer
+//uint16_t count = 0;
 
 // array of data items
 FifoItem_t fifoArray[FIFO_SIZE];
@@ -190,12 +193,12 @@ void TaskGetData(void *pvParameters)  // This is a task.
     p->valueX = event.acceleration.x;
     p->valueY = event.acceleration.y;
     p->valueZ = event.acceleration.z;
-    Serial.print(p->valueX,5);
-    Serial.write(',');
-    Serial.print(p->valueY,5);
-    Serial.write(',');
-    Serial.print(p->valueZ,5);
-    Serial.println();
+    //Serial.print(p->valueX,5);
+    //Serial.write(',');
+    //Serial.print(p->valueY,5);
+    //Serial.write(',');
+    //Serial.print(p->valueZ,5);
+    //Serial.println();
 
     // signal new data
     xSemaphoreGive(fifoData);
@@ -248,6 +251,7 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
     logfile.write(',');
     logfile.print(p->valueZ,5);
     logfile.println(); 
+    //count++; 
     /*Serial.print(p->valueX,5);
     Serial.write(',');
     Serial.print(p->valueY,5);
@@ -268,8 +272,12 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
     //if (Serial.available()) {
       // close file to insure data is saved correctly
     //logfile.close();
-    logfile.flush(); 
 
+    //if (count == 512){
+    logfile.flush(); 
+    //count = 0;
+    //}
+    
     //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
     //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
     //digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
