@@ -67,7 +67,7 @@ void TaskSDFlush( void *pvParameters );
 void setup() {
 
   // initialize serial communication at 115200 bits per second:
-  Serial.begin(115200);
+  //Serial.begin(115200);
 
   //Outputs, Pins, Buttons, Etc. 
   pinMode(13, OUTPUT);  //set Built in LED to show writing on SD Card
@@ -133,7 +133,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(25))) {
     ,  "Get Data from Accel to Queue"   // A name just for humans
     ,  2048  // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
-    ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  1  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
     ,  TaskCore0);
 
@@ -151,7 +151,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(25))) {
     ,  "Write Data to Card"
     ,  1024 // Stack size
     ,  NULL
-    ,  2  // Priority
+    ,  3  // Priority
     ,  NULL 
     ,  TaskCore1);
 }
@@ -181,9 +181,6 @@ void TaskGetData(void *pvParameters)  // This is a task.
     //Micro = micros(); 
     sensors_event_t event;
     lis.getEvent(&event);
-    //p->valueX = event.acceleration.x;
-    //p->valueY = event.acceleration.y;
-    //p->valueZ = event.acceleration.z;
     pxPointerToxData_t->usec = micros();
     pxPointerToxData_t->valueX = event.acceleration.x;
     pxPointerToxData_t->valueY = event.acceleration.y;
@@ -192,12 +189,6 @@ void TaskGetData(void *pvParameters)  // This is a task.
     p->valueX = lis.x;
     p->valueY = lis.y;
     p->valueZ = lis.z;*/
-    //Serial.print(Data_NOW.valueX,5);
-    //Serial.write(',');
-    //Serial.print(Data_NOW.valueY,5);
-    //Serial.write(',');
-    //Serial.print(Data_NOW.valueZ,5);
-    //Serial.println();
     
     //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
     //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
@@ -205,7 +196,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
     //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
  
 
-    vTaskDelay(intervalTicks);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
+    //vTaskDelay(intervalTicks);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
     
   
   }
@@ -237,18 +228,7 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       logfile.print(pxData_RCV->valueY,5);
       logfile.write(',');
       logfile.print(pxData_RCV->valueZ,5);
-      //logfile.print(',');
-      //logfile.print(Data_Recieved.error);
       logfile.println(); 
-      //count++; 
-      /*Serial.println(p->usec);
-      Serial.print(p->valueX,5);
-      Serial.write(',');
-      Serial.print(p->valueY,5);
-      logfile.write(',');
-      Serial.print(p->valueZ,5);
-      //Serial.println(p->error);
-      Serial.println();*/
       //Serial.print(pxData_RCV->usec); 
       //Serial.write(',');
       //Serial.print(pxData_RCV->valueX,5);
@@ -256,14 +236,7 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       //Serial.print(pxData_RCV->valueY,5);
       //Serial.write(',');
       //Serial.print(pxData_RCV->valueZ,5);
-      //logfile.print(',');
-      //logfile.print(Data_Recieved.error);
       //Serial.println(); 
-    
-      //if (count == 512){
-      //logfile.flush(); 
-      //count = 0;
-      //}
       }
     }
  }
