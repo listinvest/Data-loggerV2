@@ -72,7 +72,7 @@ void TaskSDFlush( void *pvParameters );
 //------------------------------------------------------------------------------
 
 // Start the scheduler so the created tasks start executing. Need this for ESP32???
-void vTaskStartScheduler();
+//void vTaskStartScheduler();
    
 // the setup function runs once when you press reset or power the board
 void setup() {
@@ -146,27 +146,27 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(25))) {
     ,  "Get Data from Accel to Queue"   // A name just for humans
     ,  2048  // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
-    ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  4  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
-    ,  TaskCore0);
+    ,  TaskCore1);
 
   xTaskCreatePinnedToCore(
     TaskSDWrite
     ,  "Get Data from Queue"
     ,  2048 // Stack size
     ,  NULL
-    ,  2  // Priority
+    ,  3  // Priority
     ,  NULL 
-    ,  TaskCore1);
+    ,  TaskCore0);
 
   xTaskCreatePinnedToCore(
     TaskSDFlush
     ,  "Write Data to Card"
     ,  1024 // Stack size
     ,  NULL
-    ,  1  // Priority
+    ,  4  // Priority
     ,  NULL 
-    ,  TaskCore1);
+    ,  TaskCore0);
 }
 
 void loop()
@@ -213,9 +213,8 @@ void TaskGetData(void *pvParameters)  // This is a task.
     //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
  
     vTaskDelay(intervalTicks);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
-    
-  
-  }
+    }
+    vTaskDelete( NULL );
 }
 //------------------------------------------------------------------------------
 void TaskSDWrite(void *pvParameters)  // This is a task.
@@ -265,6 +264,7 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       //uint8_t i = 0; 
     }
    }
+   vTaskDelete( NULL ); 
 }
 
 
@@ -280,4 +280,5 @@ void TaskSDFlush(void *pvParameters)  // This is a task.
     Serial.println("Flushed file"); 
     
   }
+  vTaskDelete ( NULL ); 
 }
