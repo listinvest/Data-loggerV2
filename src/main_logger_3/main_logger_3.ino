@@ -106,7 +106,7 @@ void setup() {
 
 // SD CARD SETUP ====================================================================
 // see if the card is present and can be initialized:  (Use highest SD clock possible, but lower if has error, 15 Mhz works, possible to go to to 25 Mhz if sample rate is low enough
-if (!sd.begin(sdChipSelect, SD_SCK_MHZ(25))) {
+if (!sd.begin(sdChipSelect, SD_SCK_MHZ(30))) {
   Serial.println("Card init. failed!");
   //error(2);
 }
@@ -125,7 +125,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(25))) {
   }
 
 // Create file and prepare it ============================================================
-  logfile = sd.open(filename, O_CREAT | O_WRITE ); // | O_TRUNC);
+  logfile = sd.open(filename, O_WRONLY | O_CREAT | O_EXCL ); // | O_TRUNC )); O_CREAT | O_WRITE);
   if( ! logfile ) {
     Serial.print("Couldnt create "); 
     Serial.println(filename);
@@ -139,7 +139,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(25))) {
 
 
   //Queue Setup
-  DataQueue = xQueueCreate(5000, sizeof( &xData_t ));
+  DataQueue = xQueueCreate(10, sizeof( &xData_t ));
   if(DataQueue == NULL){
      Serial.println("Error Creating the Queue");
    }
@@ -153,7 +153,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(25))) {
     ,  NULL
     ,  4  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
-    ,  TaskCore1);
+    ,  TaskCore0);
 
   xTaskCreatePinnedToCore(
     TaskSDWrite
@@ -162,7 +162,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(25))) {
     ,  NULL
     ,  3 // Priority
     ,  NULL 
-    ,  TaskCore0);
+    ,  TaskCore1);
 
   xTaskCreatePinnedToCore(
     TaskSDFlush
@@ -171,7 +171,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(25))) {
     ,  NULL
     ,  3  // Priority
     ,  NULL 
-    ,  TaskCore0);
+    ,  TaskCore1);
 }
 
 void loop()
@@ -194,7 +194,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
 
     if(xQueueSend( DataQueue, (void *) &pxPointerToxData_t, 12 ) != pdPASS )  //portMAX_DELAY
       {
-        Serial.println("xQueueSend is not working"); 
+        //Serial.println("xQueueSend is not working"); 
       }
       
     sensors_event_t event;
@@ -234,7 +234,7 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
     {
       if( xQueueReceive( DataQueue, &( pxData_RCV ), 12 ) != pdPASS )   //portMAX_DELAY
       {
-        Serial.println("xQueueRecieve is not working");
+        //Serial.println("xQueueRecieve is not working");
       }
         
       // print interval between points
@@ -263,8 +263,8 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
         Serial.println(); */
       //}
 
-        uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
-        Serial.println(FreeSpace); 
+        //uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
+        //Serial.println(FreeSpace); 
         //logfile.flush();
       //uint8_t i = 0;
       }
