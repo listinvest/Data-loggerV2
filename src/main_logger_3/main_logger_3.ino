@@ -46,14 +46,14 @@ struct Data_t {
 QueueHandle_t DataQueue = NULL;
 
 // interval between points in units of 1000 usec
-const uint16_t intervalTicks = 10;
+const uint16_t intervalTicks = 2;
 
 //------------------------------------------------------------------------------
 // Accel Lis3dh definitions, SPI or I2C
 // Used for software SPI
 #define LIS3DH_CLK 32  //SCL
 #define LIS3DH_MISO 15  //SDO
-#define LIS3DH_MOSI 33  //SDA
+#define LIS3DH_MOSI 27  //SDA
 // Used for hardware & software SPI
 #define LIS3DH_CS 14  //ESP32: 14/A6 , Cortex m0: 5, Use for upper accel (Sensor 1!!!) = hbar, seatpost, etc.
 //#define LIS3DH_CS2 15  //ESP32: 15/A8, Cortex m0: 9, Use for lower accel (Sensor 2!!!) = axles, etc. 
@@ -151,27 +151,27 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(25))) {
     ,  "Get Data from Accel to Queue"   // A name just for humans
     ,  8000  // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
-    ,  2  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
-    ,  TaskCore0);
+    ,  TaskCore1);
 
   xTaskCreatePinnedToCore(
     TaskSDWrite
     ,  "Get Data from Queue"
     ,  8000 // Stack size
     ,  NULL
-    ,  3 // Priority
+    ,  4 // Priority
     ,  NULL 
-    ,  TaskCore1);
+    ,  TaskCore0);
 
   xTaskCreatePinnedToCore(
     TaskSDFlush
     ,  "Write Data to Card"
     ,  5000 // Stack size
     ,  NULL
-    ,  3  // Priority
+    ,  4  // Priority
     ,  NULL 
-    ,  TaskCore1);
+    ,  TaskCore0);
 }
 
 void loop()
@@ -253,14 +253,14 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
         logfile.print(',');
         logfile.print(pxData_RCV->valueZ,5);
         logfile.println(); 
-        Serial.print(pxData_RCV->usec); 
+        /*Serial.print(pxData_RCV->usec); 
         Serial.print(',');
         Serial.print(pxData_RCV->valueX,5);
         Serial.print(',');
         Serial.print(pxData_RCV->valueY,5);
         Serial.print(',');
         Serial.print(pxData_RCV->valueZ,5);
-        Serial.println(); 
+        Serial.println(); */
       //}
 
         uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
