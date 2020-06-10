@@ -49,7 +49,7 @@ struct Data_t {
 QueueHandle_t DataQueue = NULL;
 
 // interval between points in units of 1000 usec
-const uint16_t intervalTicks = 5;
+const uint16_t intervalTicks = 4;
 
 //------------------------------------------------------------------------------
 // Accel Lis3dh definitions, SPI or I2C
