@@ -322,7 +322,7 @@ void TaskSDFlush(void *pvParameters)  // This is a task.
   for (;;)
   {
     vTaskDelay( 500 );
-    //logfile.flush();
+    logfile.flush();
     //Serial.println("Flushed file"); 
     
   }
