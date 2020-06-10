@@ -125,7 +125,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
   }
 
 // Create file and prepare it ============================================================
-  logfile = sd.open(filename, O_WRONLY | O_CREAT | O_EXCL ); // | O_TRUNC )); O_CREAT | O_WRITE);
+  logfile = sd.open(filename, O_CREAT | O_WRITE);  //O_WRONLY | O_CREAT | O_EXCL ); // | O_TRUNC )); 
   if( ! logfile ) {
     Serial.print("Couldnt create "); 
     Serial.println(filename);
@@ -280,7 +280,7 @@ void TaskSDFlush(void *pvParameters)  // This is a task.
 
   for (;;)
   {
-    vTaskDelay( 2000 );
+    vTaskDelay( 1000 );
     logfile.flush();
     //Serial.println("Flushed file"); 
     
