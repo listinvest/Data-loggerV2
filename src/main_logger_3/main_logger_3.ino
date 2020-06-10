@@ -83,7 +83,7 @@ void TaskSDFlush( void *pvParameters );
 void setup() {
 
   // initialize serial communication at 115200 bits per second:
-  Serial.begin(250000);
+  //Serial.begin(250000);
 
   //Outputs, Pins, Buttons, Etc. 
   pinMode(13, OUTPUT);  //set Built in LED to show writing on SD Card
