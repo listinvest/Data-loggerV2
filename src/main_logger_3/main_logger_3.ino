@@ -83,7 +83,7 @@ void TaskSDFlush( void *pvParameters );
 void setup() {
 
   // initialize serial communication at 115200 bits per second:
-  Serial.begin(250000);
+  //Serial.begin(250000);
 
   //Outputs, Pins, Buttons, Etc. 
   pinMode(13, OUTPUT);  //set Built in LED to show writing on SD Card
@@ -149,27 +149,27 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(25))) {
   xTaskCreatePinnedToCore(
     TaskGetData
     ,  "Get Data from Accel to Queue"   // A name just for humans
-    ,  8000  // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  10000 // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
-    ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  4  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
     ,  TaskCore1);
 
   xTaskCreatePinnedToCore(
     TaskSDWrite
     ,  "Get Data from Queue"
-    ,  8000 // Stack size
+    ,  10000 // Stack size
     ,  NULL
-    ,  4 // Priority
+    ,  3 // Priority
     ,  NULL 
     ,  TaskCore0);
 
   xTaskCreatePinnedToCore(
     TaskSDFlush
     ,  "Write Data to Card"
-    ,  5000 // Stack size
+    ,  10000 // Stack size
     ,  NULL
-    ,  4  // Priority
+    ,  3  // Priority
     ,  NULL 
     ,  TaskCore0);
 }
@@ -280,7 +280,7 @@ void TaskSDFlush(void *pvParameters)  // This is a task.
 
   for (;;)
   {
-    vTaskDelay( 1000 );
+    vTaskDelay( 2000 );
     logfile.flush();
     //Serial.println("Flushed file"); 
     
