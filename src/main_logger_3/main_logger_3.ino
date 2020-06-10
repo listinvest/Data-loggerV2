@@ -13,10 +13,10 @@ const int TaskCore0 = 0;
 //Libraries
 #include <Wire.h>
 #include <SPI.h>
-#include <SdFat.h>
+#include "SdFat.h"
 #include <Adafruit_LIS3DH.h>
 #include <Adafruit_Sensor.h>
-#include <stdio.h>
+#include "stdio.h"
 #include "esp_system.h" //This inclusion configures the peripherals in the ESP system.
 //#include "freertos/Arduino_FreeRTOS.h"
 #include "freertos/FreeRTOS.h"
@@ -51,18 +51,18 @@ const uint16_t intervalTicks = 2;
 //------------------------------------------------------------------------------
 // Accel Lis3dh definitions, SPI or I2C
 // Used for software SPI
-#define LIS3DH_CLK 32  //SCL
-#define LIS3DH_MISO 15  //SDO
-#define LIS3DH_MOSI 27  //SDA
+//#define LIS3DH_CLK 32  //SCL
+//#define LIS3DH_MISO 15  //SDO
+//#define LIS3DH_MOSI 27  //SDA
 // Used for hardware & software SPI
 #define LIS3DH_CS 14  //ESP32: 14/A6 , Cortex m0: 5, Use for upper accel (Sensor 1!!!) = hbar, seatpost, etc.
 //#define LIS3DH_CS2 15  //ESP32: 15/A8, Cortex m0: 9, Use for lower accel (Sensor 2!!!) = axles, etc. 
 // software SPI
-Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS, LIS3DH_MOSI, LIS3DH_MISO, LIS3DH_CLK);
+//Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS, LIS3DH_MOSI, LIS3DH_MISO, LIS3DH_CLK);
 
-// hardware SPI 1 LIS3DH->Feather:  Power to Vin, Gnd to Gnd, SCL->SCK, SDA->MOSI, SDO->MOSO, CS->CS 14/15
+// hardware SPI 1 LIS3DH->Feather:  Power to Vin, Gnd to Gnd, SCL->SCK, SDA->MOSO, SDO->MOSI, CS->CS 14/15
 // Sensor 1 Hardware SPI
-//Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS);
+Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS);
 // Sensor 2 Hardware SPI
 //Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH_CS2);
 
@@ -83,13 +83,13 @@ void TaskSDFlush( void *pvParameters );
 void setup() {
 
   // initialize serial communication at 115200 bits per second:
-  //Serial.begin(250000);
+  Serial.begin(250000);
 
   //Outputs, Pins, Buttons, Etc. 
   pinMode(13, OUTPUT);  //set Built in LED to show writing on SD Card
 
   //ACCEL Setup and RUN
-  if (! lis.begin(0x18)) {   // change this to 0x19 for alternative i2c address
+  if (! lis.begin(/*0x18*/)) {   // change this to 0x19 for alternative i2c address
   Serial.println("Couldnt start");
   while (1) yield();
   }
@@ -106,7 +106,7 @@ void setup() {
 
 // SD CARD SETUP ====================================================================
 // see if the card is present and can be initialized:  (Use highest SD clock possible, but lower if has error, 15 Mhz works, possible to go to to 25 Mhz if sample rate is low enough
-if (!sd.begin(sdChipSelect, SD_SCK_MHZ(30))) {
+if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
   Serial.println("Card init. failed!");
   //error(2);
 }
