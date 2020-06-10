@@ -37,16 +37,19 @@ File logfile;
 // data type for Queue item
 struct Data_t {
   uint32_t usec; 
-  float valueX;
-  float valueY;
-  float valueZ;
+  float value1X;
+  float value1Y;
+  float value1Z;
+  float value2X;
+  float value2Y;
+  float value2Z;
 } xData_t;
 
 //Declare Queue data type for FreeRTOS
 QueueHandle_t DataQueue = NULL;
 
 // interval between points in units of 1000 usec
-const uint16_t intervalTicks = 2;
+const uint16_t intervalTicks = 10;
 
 //------------------------------------------------------------------------------
 // Accel Lis3dh definitions, SPI or I2C
@@ -56,7 +59,7 @@ const uint16_t intervalTicks = 2;
 //#define LIS3DH_MOSI 27  //SDA
 // Used for hardware & software SPI
 #define LIS3DH_CS 14  //ESP32: 14/A6 , Cortex m0: 5, Use for upper accel (Sensor 1!!!) = hbar, seatpost, etc.
-//#define LIS3DH_CS2 15  //ESP32: 15/A8, Cortex m0: 9, Use for lower accel (Sensor 2!!!) = axles, etc. 
+#define LIS3DH_CS2 15  //ESP32: 15/A8, Cortex m0: 9, Use for lower accel (Sensor 2!!!) = axles, etc. 
 // software SPI
 //Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS, LIS3DH_MOSI, LIS3DH_MISO, LIS3DH_CLK);
 
@@ -64,7 +67,7 @@ const uint16_t intervalTicks = 2;
 // Sensor 1 Hardware SPI
 Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS);
 // Sensor 2 Hardware SPI
-//Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH_CS2);
+Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH_CS2);
 
 // Sensor I2C 
 //Adafruit_LIS3DH lis = Adafruit_LIS3DH();
@@ -74,6 +77,7 @@ Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS);
 void TaskGetData( void *pvParameters );
 void TaskSDWrite( void *pvParameters );
 void TaskSDFlush( void *pvParameters );
+void TaskSDClose( void *pvParameters );
 //------------------------------------------------------------------------------
 
 // Start the scheduler so the created tasks start executing. Need this for ESP32???
@@ -83,26 +87,32 @@ void TaskSDFlush( void *pvParameters );
 void setup() {
 
   // initialize serial communication at 115200 bits per second:
-  //Serial.begin(250000);
+  Serial.begin(250000);
 
   //Outputs, Pins, Buttons, Etc. 
   pinMode(13, OUTPUT);  //set Built in LED to show writing on SD Card
-
+  pinMode(4, INPUT); //button to turn recording on/off
+  
   //ACCEL Setup and RUN
-  if (! lis.begin(/*0x18*/)) {   // change this to 0x19 for alternative i2c address
+  if (! lis.begin(0x18)) {   // change this to 0x19 for alternative i2c address
   Serial.println("Couldnt start");
   while (1) yield();
   }
-  Serial.println("LIS3DH found!");
+  Serial.println("LIS3DH Sensor 1 found!");
+
+  if (! lis2.begin(0x19)) {   // Sensor 2, SDO is 3V
+  Serial.println("Couldnt start Sensor 2");
+  while (1) yield();
+  }
+  Serial.println("LIS3DH Sensor 2 found!");
+  
   // Set accel range  
   lis.setRange(LIS3DH_RANGE_16_G);   // 2, 4, 8 or 16 G!
-  //lis2.setRange(LIS3DH_RANGE_16_G);
+  lis2.setRange(LIS3DH_RANGE_16_G);
   // Set DataRate
   lis.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); //OPTIONS:  LIS3DH_DATARATE_400_HZ, LIS3DH_DATARATE_LOWPOWER_1K6HZ, LIS3DH_DATARATE_LOWPOWER_5KHZ
-  //lis2.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); 
+  lis2.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); 
 
-  //Setup I2C speed
-  //Wire.setClock(400000);
 
 // SD CARD SETUP ====================================================================
 // see if the card is present and can be initialized:  (Use highest SD clock possible, but lower if has error, 15 Mhz works, possible to go to to 25 Mhz if sample rate is low enough
@@ -134,10 +144,22 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
   Serial.print("Writing to "); 
   Serial.println(filename);
 
-  pinMode(13, OUTPUT);
-  Serial.println("Ready!");
-
-
+  //Column labels
+  logfile.print("Time"); 
+  logfile.print(",");
+  logfile.print("Sensor 1 X");
+  logfile.print(",");
+  logfile.print("Sensor 1 Y");
+  logfile.print(",");
+  logfile.print("Sensor 1 Z");
+  logfile.print(",");
+  logfile.print("Sensor 2 X");
+  logfile.print(",");
+  logfile.print("Sensor 2 Y");
+  logfile.print(",");
+  logfile.print("Sensor 2 Z");
+  logfile.println();
+  
   //Queue Setup
   DataQueue = xQueueCreate(10, sizeof( &xData_t ));
   if(DataQueue == NULL){
@@ -153,7 +175,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
     ,  NULL
     ,  4  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
-    ,  TaskCore0);
+    ,  TaskCore1);
 
   xTaskCreatePinnedToCore(
     TaskSDWrite
@@ -162,7 +184,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
     ,  NULL
     ,  3 // Priority
     ,  NULL 
-    ,  TaskCore1);
+    ,  TaskCore0);
 
   xTaskCreatePinnedToCore(
     TaskSDFlush
@@ -171,7 +193,16 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
     ,  NULL
     ,  3  // Priority
     ,  NULL 
-    ,  TaskCore1);
+    ,  TaskCore0);
+
+  xTaskCreatePinnedToCore(
+    TaskSDClose
+    ,  "Close the File"
+    ,  10000 // Stack size
+    ,  NULL
+    ,  3  // Priority
+    ,  NULL 
+    ,  TaskCore0);    
 }
 
 void loop()
@@ -199,10 +230,15 @@ void TaskGetData(void *pvParameters)  // This is a task.
       
     sensors_event_t event;
     lis.getEvent(&event);
+    sensors_event_t event2;
+    lis2.getEvent(&event2);
     pxPointerToxData_t->usec = micros();
-    pxPointerToxData_t->valueX = event.acceleration.x;
-    pxPointerToxData_t->valueY = event.acceleration.y;
-    pxPointerToxData_t->valueZ = event.acceleration.z;
+    pxPointerToxData_t->value1X = event.acceleration.x;
+    pxPointerToxData_t->value1Y = event.acceleration.y;
+    pxPointerToxData_t->value1Z = event.acceleration.z;
+    pxPointerToxData_t->value2X = event2.acceleration.x;
+    pxPointerToxData_t->value2Y = event2.acceleration.y;
+    pxPointerToxData_t->value2Z = event2.acceleration.z;
     /*Serial.print(pxPointerToxData_t->usec); 
     Serial.print(',');
     Serial.print(pxPointerToxData_t->valueX,5);
@@ -244,14 +280,20 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
         logfile.write("NA");
       }
       last = p->usec;*/
-      //for (uint8_t i = 0; i < 10; i++) { 
+      //for (int i = 0; i <= 5000; i++) {
         logfile.print(pxData_RCV->usec);
         logfile.print(',');
-        logfile.print(pxData_RCV->valueX,5);
+        logfile.print(pxData_RCV->value1X,5);
         logfile.print(',');
-        logfile.print(pxData_RCV->valueY,5);
+        logfile.print(pxData_RCV->value1Y,5);
         logfile.print(',');
-        logfile.print(pxData_RCV->valueZ,5);
+        logfile.print(pxData_RCV->value1Z,5);
+        logfile.print(',');
+        logfile.print(pxData_RCV->value2X,5);
+        logfile.print(',');
+        logfile.print(pxData_RCV->value2Y,5);
+        logfile.print(',');
+        logfile.print(pxData_RCV->value2Z,5);
         logfile.println(); 
         /*Serial.print(pxData_RCV->usec); 
         Serial.print(',');
@@ -261,12 +303,11 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
         Serial.print(',');
         Serial.print(pxData_RCV->valueZ,5);
         Serial.println(); */
+        //logfile.flush(); 
       //}
-
         //uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
         //Serial.println(FreeSpace); 
-        //logfile.flush();
-      //uint8_t i = 0;
+      //logfile.close();
       }
    }
    vTaskDelete( NULL ); 
@@ -280,9 +321,24 @@ void TaskSDFlush(void *pvParameters)  // This is a task.
 
   for (;;)
   {
-    vTaskDelay( 1000 );
-    logfile.flush();
+    vTaskDelay( 500 );
+    //logfile.flush();
     //Serial.println("Flushed file"); 
+    
+  }
+  //vTaskDelete ( NULL ); 
+}
+
+//------------------------------------------------------------------------------
+void TaskSDClose(void *pvParameters)  // This is a task.
+{
+  (void) pvParameters;
+
+  for (;;)
+  {
+    vTaskDelay( 5000 );
+    logfile.close();
+    //Serial.println("Close file"); 
     
   }
   //vTaskDelete ( NULL ); 
