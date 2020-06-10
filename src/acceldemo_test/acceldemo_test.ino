@@ -7,18 +7,18 @@
 #include <Adafruit_Sensor.h>
 
 // Used for software SPI
-#define LIS3DH_CLK 13
-#define LIS3DH_MISO 12
-#define LIS3DH_MOSI 11
+#define LIS3DH_CLK 32
+#define LIS3DH_MISO 15
+#define LIS3DH_MOSI 33
 // Used for hardware & software SPI
 #define LIS3DH_CS 14
 
 // software SPI
-//Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS, LIS3DH_MOSI, LIS3DH_MISO, LIS3DH_CLK);
+Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS, LIS3DH_MOSI, LIS3DH_MISO, LIS3DH_CLK);
 // hardware SPI
 //Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS);
 // I2C
-Adafruit_LIS3DH lis = Adafruit_LIS3DH();
+//Adafruit_LIS3DH lis = Adafruit_LIS3DH();
 
 void setup(void) {
   Serial.begin(2000000);
@@ -52,7 +52,7 @@ void setup(void) {
     case LIS3DH_DATARATE_LOWPOWER_5KHZ: Serial.println("5 Khz Low Power"); break;
     case LIS3DH_DATARATE_LOWPOWER_1K6HZ: Serial.println("16 Khz Low Power"); break;
 
-    Wire.setClock(400000); 
+    //Wire.setClock(400000); 
   }
 }
 
@@ -76,5 +76,5 @@ void loop() {
 
   Serial.println();
 
-  delayMicroseconds(1000);
+  delayMicroseconds(100);
 }
