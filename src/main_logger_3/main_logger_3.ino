@@ -49,7 +49,7 @@ struct Data_t {
 QueueHandle_t DataQueue = NULL;
 
 // interval between points in units of 1000 usec
-const uint16_t intervalTicks = 4;
+const uint16_t intervalTicks = 2;
 
 //------------------------------------------------------------------------------
 // Accel Lis3dh definitions, SPI or I2C
@@ -87,7 +87,9 @@ void TaskSDClose( void *pvParameters );
 void setup() {
 
   // initialize serial communication at 115200 bits per second:
-  Serial.begin(250000);
+  //Serial.begin(250000);
+
+  //SPI.beginTransaction(SPISettings(80000000, LSBFIRST, SPI_MODE0));
 
   //Outputs, Pins, Buttons, Etc. 
   pinMode(13, OUTPUT);  //set Built in LED to show writing on SD Card
@@ -184,7 +186,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
     ,  NULL
     ,  3 // Priority
     ,  NULL 
-    ,  TaskCore0);
+    ,  TaskCore1);
 
   xTaskCreatePinnedToCore(
     TaskSDFlush
@@ -283,17 +285,17 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       //for (int i = 0; i <= 5000; i++) {
         logfile.print(pxData_RCV->usec);
         logfile.print(',');
-        logfile.print(pxData_RCV->value1X,5);
+        logfile.print(pxData_RCV->value1X,4);
         logfile.print(',');
-        logfile.print(pxData_RCV->value1Y,5);
+        logfile.print(pxData_RCV->value1Y,4);
         logfile.print(',');
-        logfile.print(pxData_RCV->value1Z,5);
+        logfile.print(pxData_RCV->value1Z,4);
         logfile.print(',');
-        logfile.print(pxData_RCV->value2X,5);
+        logfile.print(pxData_RCV->value2X,4);
         logfile.print(',');
-        logfile.print(pxData_RCV->value2Y,5);
+        logfile.print(pxData_RCV->value2Y,4);
         logfile.print(',');
-        logfile.print(pxData_RCV->value2Z,5);
+        logfile.print(pxData_RCV->value2Z,4);
         logfile.println(); 
         /*Serial.print(pxData_RCV->usec); 
         Serial.print(',');
@@ -326,7 +328,7 @@ void TaskSDFlush(void *pvParameters)  // This is a task.
     //Serial.println("Flushed file"); 
     
   }
-  //vTaskDelete ( NULL ); 
+  vTaskDelete ( NULL ); 
 }
 
 //------------------------------------------------------------------------------
@@ -341,5 +343,5 @@ void TaskSDClose(void *pvParameters)  // This is a task.
     //Serial.println("Close file"); 
     
   }
-  //vTaskDelete ( NULL ); 
+  vTaskDelete ( NULL ); 
 }
