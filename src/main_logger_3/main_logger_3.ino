@@ -49,7 +49,7 @@ struct Data_t {
 QueueHandle_t DataQueue = NULL;
 
 // interval between points in units of 1000 usec
-const uint16_t intervalTicks = 2;
+//const uint16_t intervalTicks = 2;
 
 //------------------------------------------------------------------------------
 // Accel Lis3dh definitions, SPI or I2C
@@ -73,11 +73,11 @@ Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH_CS2);
 //Adafruit_LIS3DH lis = Adafruit_LIS3DH();
 
 //------------------------------------------------------------------------------
-// define two tasks for Sensor Data and SD Write
-void TaskGetData( void *pvParameters );
+// define tasks for Sensor Data and SD Write
+//void TaskGetData( void *pvParameters );
 void TaskSDWrite( void *pvParameters );
-void TaskSDFlush( void *pvParameters );
-void TaskSDClose( void *pvParameters );
+//void TaskSDFlush( void *pvParameters );
+//void TaskSDClose( void *pvParameters );
 //------------------------------------------------------------------------------
 
 // Start the scheduler so the created tasks start executing. Need this for ESP32???
@@ -87,8 +87,29 @@ void TaskSDClose( void *pvParameters );
 void setup() {
 
   // initialize serial communication at 115200 bits per second:
-  //Serial.begin(250000);
+  Serial.begin(250000);
 
+  // Create timer
+  TimerHandle_t timer1 = xTimerCreate("HZ sample timer", pdMS_TO_TICKS(100), pdTRUE, 0, TaskGetData);
+  TimerHandle_t timer2 = xTimerCreate("flush timer", pdMS_TO_TICKS(500), pdTRUE, 0, TaskSDFlush);
+  TimerHandle_t timer3 = xTimerCreate("close file timer", pdMS_TO_TICKS(8000), pdTRUE, 0, TaskSDClose);
+  if (timer1 == NULL) {
+    Serial.println("Timer can not be created");
+  } else {
+    // Start timer
+    if (xTimerStart(timer1, 0) == pdPASS) { // Start the scheduler
+      Serial.println("Timer working");
+    }
+  }
+  if (timer2 == NULL) {
+    Serial.println("Timer 2 can not be created");
+  } else {
+    // Start timer
+    if (xTimerStart(timer2, 0) == pdPASS) { // Start the scheduler
+      Serial.println("Timer 2 working");
+    }
+  }
+  
   //SPI.beginTransaction(SPISettings(80000000, LSBFIRST, SPI_MODE0));
 
   //Outputs, Pins, Buttons, Etc. 
@@ -120,7 +141,7 @@ void setup() {
 // see if the card is present and can be initialized:  (Use highest SD clock possible, but lower if has error, 15 Mhz works, possible to go to to 25 Mhz if sample rate is low enough
 if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
   Serial.println("Card init. failed!");
-  //error(2);
+  while (1) yield(); 
 }
 
 // Create filename scheme ====================================================================
@@ -141,7 +162,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
   if( ! logfile ) {
     Serial.print("Couldnt create "); 
     Serial.println(filename);
-    //error(3);
+    while (1) yield(); 
   }
   Serial.print("Writing to "); 
   Serial.println(filename);
@@ -163,48 +184,48 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
   logfile.println();
   
   //Queue Setup
-  DataQueue = xQueueCreate(10, sizeof( &xData_t ));
+  DataQueue = xQueueCreate(100, sizeof( &xData_t ));
   if(DataQueue == NULL){
      Serial.println("Error Creating the Queue");
    }
   
 // Setup up Tasks and where to run ============================================================  
 // Now set up tasks to run independently.
-  xTaskCreatePinnedToCore(
+  /*xTaskCreatePinnedToCore(
     TaskGetData
     ,  "Get Data from Accel to Queue"   // A name just for humans
     ,  10000 // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
     ,  4  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
-    ,  TaskCore1);
+    ,  TaskCore1);*/
 
   xTaskCreatePinnedToCore(
     TaskSDWrite
     ,  "Get Data from Queue"
-    ,  10000 // Stack size
+    ,  20000 // Stack size
     ,  NULL
     ,  3 // Priority
     ,  NULL 
     ,  TaskCore1);
 
-  xTaskCreatePinnedToCore(
+  /*xTaskCreatePinnedToCore(
     TaskSDFlush
     ,  "Write Data to Card"
     ,  10000 // Stack size
     ,  NULL
     ,  3  // Priority
     ,  NULL 
-    ,  TaskCore0);
+    ,  TaskCore1);*/
 
-  xTaskCreatePinnedToCore(
+  /*xTaskCreatePinnedToCore(
     TaskSDClose
     ,  "Close the File"
     ,  10000 // Stack size
     ,  NULL
     ,  3  // Priority
     ,  NULL 
-    ,  TaskCore0);    
+    ,  TaskCore1);*/    
 }
 
 void loop()
@@ -215,7 +236,49 @@ void loop()
 /*--------------------------------------------------*/
 }
 
-void TaskGetData(void *pvParameters)  // This is a task.
+void TaskGetData( TimerHandle_t timer1 )  // This is a task.
+{
+    struct Data_t *pxPointerToxData_t;
+
+    pxPointerToxData_t = &xData_t; 
+
+    if(xQueueSend( DataQueue, (void *) &pxPointerToxData_t, 2000 ) != pdPASS )  //portMAX_DELAY
+      {
+        Serial.println("xQueueSend is not working"); 
+      }
+       
+    sensors_event_t event;
+    lis.getEvent(&event);
+    sensors_event_t event2;
+    lis2.getEvent(&event2);
+    pxPointerToxData_t->usec = micros();
+    pxPointerToxData_t->value1X = event.acceleration.x;
+    pxPointerToxData_t->value1Y = event.acceleration.y;
+    pxPointerToxData_t->value1Z = event.acceleration.z;
+    pxPointerToxData_t->value2X = event2.acceleration.x;
+    pxPointerToxData_t->value2Y = event2.acceleration.y;
+    pxPointerToxData_t->value2Z = event2.acceleration.z;
+    Serial.print(pxPointerToxData_t->usec); 
+    Serial.print(',');
+    Serial.print(pxPointerToxData_t->value1X,5);
+    Serial.print(',');
+    Serial.print(pxPointerToxData_t->value1Y,5);
+    Serial.print(',');
+    Serial.print(pxPointerToxData_t->value1Z,5);
+    Serial.println();
+        
+}
+
+void TaskSDFlush( TimerHandle_t timer2 )  // This is a task.
+{
+  logfile.flush(); 
+}
+
+void TaskSDClose( TimerHandle_t timer3 )  // This is a task.
+{
+  logfile.close(); 
+}
+/*void TaskGetData(void *pvParameters)  // This is a task.
 {
   (void) pvParameters;
   
@@ -225,7 +288,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
   {
     pxPointerToxData_t = &xData_t; 
 
-    if(xQueueSend( DataQueue, (void *) &pxPointerToxData_t, 12 ) != pdPASS )  //portMAX_DELAY
+    if(xQueueSend( DataQueue, (void *) &pxPointerToxData_t, 2000 ) != pdPASS )  //portMAX_DELAY
       {
         //Serial.println("xQueueSend is not working"); 
       }
@@ -241,24 +304,24 @@ void TaskGetData(void *pvParameters)  // This is a task.
     pxPointerToxData_t->value2X = event2.acceleration.x;
     pxPointerToxData_t->value2Y = event2.acceleration.y;
     pxPointerToxData_t->value2Z = event2.acceleration.z;
-    /*Serial.print(pxPointerToxData_t->usec); 
+    Serial.print(pxPointerToxData_t->usec); 
     Serial.print(',');
-    Serial.print(pxPointerToxData_t->valueX,5);
+    Serial.print(pxPointerToxData_t->value1X,5);
     Serial.print(',');
-    Serial.print(pxPointerToxData_t->valueY,5);
+    Serial.print(pxPointerToxData_t->value1Y,5);
     Serial.print(',');
-    Serial.print(pxPointerToxData_t->valueZ,5);
-    Serial.println();*/
+    Serial.print(pxPointerToxData_t->value1Z,5);
+    Serial.println();
     
     //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
     //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
     //digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
     //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
  
-    vTaskDelay(intervalTicks);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
+    //vTaskDelay(intervalTicks);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
     }
     vTaskDelete( NULL );
-}
+}*/
 //------------------------------------------------------------------------------
 void TaskSDWrite(void *pvParameters)  // This is a task.
 {
@@ -270,19 +333,11 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
 
     if(DataQueue != NULL ) 
     {
-      if( xQueueReceive( DataQueue, &( pxData_RCV ), 12 ) != pdPASS )   //portMAX_DELAY
+      if( xQueueReceive( DataQueue, &( pxData_RCV ), 2000 ) != pdPASS )   //portMAX_DELAY
       {
         //Serial.println("xQueueRecieve is not working");
       }
         
-      // print interval between points
-      /*if (last) {
-        logfile.print(p->usec - last);
-      } else {
-        logfile.write("NA");
-      }
-      last = p->usec;*/
-      //for (int i = 0; i <= 5000; i++) {
         logfile.print(pxData_RCV->usec);
         logfile.print(',');
         logfile.print(pxData_RCV->value1X,4);
@@ -305,11 +360,9 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
         Serial.print(',');
         Serial.print(pxData_RCV->valueZ,5);
         Serial.println(); */
-        //logfile.flush(); 
-      //}
+ 
         //uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
         //Serial.println(FreeSpace); 
-      //logfile.close();
       }
    }
    vTaskDelete( NULL ); 
@@ -317,13 +370,12 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
 
 
 //------------------------------------------------------------------------------
-void TaskSDFlush(void *pvParameters)  // This is a task.
+/*void TaskSDFlush(void *pvParameters)  // This is a task.
 {
   (void) pvParameters;
 
   for (;;)
   {
-    vTaskDelay( 500 );
     logfile.flush();
     //Serial.println("Flushed file"); 
     
@@ -338,10 +390,10 @@ void TaskSDClose(void *pvParameters)  // This is a task.
 
   for (;;)
   {
-    vTaskDelay( 5000 );
+    //vTaskDelay( 5000 );
     logfile.close();
     //Serial.println("Close file"); 
     
   }
   vTaskDelete ( NULL ); 
-}
+}*/
