@@ -103,6 +103,12 @@ void setup() {
   // initialize serial communication at 115200 bits per second:
   Serial.begin(115200);
 
+  //Queue Setup
+  DataQueue = xQueueCreate(1000, sizeof( &xData_t ));
+  if(DataQueue == NULL){
+     Serial.println("Error Creating the Queue");
+   }
+   
   // Create timer
   //TimerHandle_t timer1 = xTimerCreate("HZ sample timer", pdMS_TO_TICKS(100), pdTRUE, 0, TaskGetData);
   TimerHandle_t timer2 = xTimerCreate("flush timer", pdMS_TO_TICKS(5000), pdTRUE, 0, TaskSDFlush);
@@ -142,7 +148,7 @@ void setup() {
   timerAttachInterrupt(timer, &onTimer, true);
   // Set alarm to call onTimer function every second (value in microseconds).
   // Repeat the alarm (third parameter)
-  timerAlarmWrite(timer, 1000, true);
+  timerAlarmWrite(timer, 10000, true);
   // Start an alarm
   timerAlarmEnable(timer);
   
@@ -150,7 +156,7 @@ void setup() {
 
   //Outputs, Pins, Buttons, Etc. 
   pinMode(LED_BUILTIN, OUTPUT);  //set Built in LED to show writing on SD Card
-  pinMode(4, INPUT); //button to turn recording on/off
+  pinMode(27, INPUT); //button to turn recording on/off, In [HIGH]
   
   //ACCEL Setup and RUN
   if (! lis.begin(0x18)) {   // change this to 0x19 for alternative i2c address
@@ -219,11 +225,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
   logfile.print("Sensor 2 Z");
   logfile.println();
   
-  //Queue Setup
-  DataQueue = xQueueCreate(100, sizeof( &xData_t ));
-  if(DataQueue == NULL){
-     Serial.println("Error Creating the Queue");
-   }
+
   
 // Setup up Tasks and where to run ============================================================  
 // Now set up tasks to run independently.
@@ -243,7 +245,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
     ,  NULL
     ,  3 // Priority
     ,  NULL 
-    ,  TaskCore1);
+    ,  TaskCore0);
 
   /*xTaskCreatePinnedToCore(
     TaskSDFlush
@@ -342,7 +344,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
     pxPointerToxData_t->value2X = event2.acceleration.x;
     pxPointerToxData_t->value2Y = event2.acceleration.y;
     pxPointerToxData_t->value2Z = event2.acceleration.z;
-    Serial.print(pxPointerToxData_t->usec); 
+    /*Serial.print(pxPointerToxData_t->usec); 
     Serial.print(',');
     Serial.print(pxPointerToxData_t->value1X,5);
     Serial.print(',');
@@ -355,9 +357,11 @@ void TaskGetData(void *pvParameters)  // This is a task.
     Serial.print(pxPointerToxData_t->value2Y,5);
     Serial.print(',');
     Serial.print(pxPointerToxData_t->value2Z,5);
-    Serial.println();
+    Serial.println();*/
     }
-    
+    else {
+      Serial.print("nothing happening");
+    }
     //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
     //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
     //digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
@@ -397,7 +401,7 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
         logfile.print(',');
         logfile.print(pxData_RCV->value2Z,4);
         logfile.println(); 
-        /*Serial.print(pxData_RCV->usec); 
+        Serial.print(pxData_RCV->usec); 
         Serial.print(',');
         Serial.print(pxData_RCV->value1X,5);
         Serial.print(',');
@@ -410,10 +414,10 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
         Serial.print(pxData_RCV->value2Y,5);
         Serial.print(',');
         Serial.print(pxData_RCV->value2Z,5);
-        Serial.println(); */
+        Serial.println(); 
  
-        //uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
-        //Serial.println(FreeSpace); 
+        uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
+        Serial.println(FreeSpace); 
       }
    }
    vTaskDelete( NULL ); 
