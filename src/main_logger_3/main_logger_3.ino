@@ -25,6 +25,8 @@ const int TaskCore0 = 0;
 #include "freertos/event_groups.h"
 #include "freertos/queue.h"
 //#include "freertos/stream_buffer.h"
+
+#define LED_BUILTIN LED_BUILTIN //LED light for notification
 //------------------------------------------------------------------------------
 // SD file definitions
 const uint8_t sdChipSelect = 33;
@@ -47,9 +49,6 @@ struct Data_t {
 
 //Declare Queue data type for FreeRTOS
 QueueHandle_t DataQueue = NULL;
-
-// interval between points in units of 1000 usec
-//const uint16_t intervalTicks = 2;
 
 //------------------------------------------------------------------------------
 // Accel Lis3dh definitions, SPI or I2C
@@ -74,33 +73,48 @@ Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH_CS2);
 
 //------------------------------------------------------------------------------
 // define tasks for Sensor Data and SD Write
-//void TaskGetData( void *pvParameters );
+void TaskGetData( void *pvParameters );
 void TaskSDWrite( void *pvParameters );
 //void TaskSDFlush( void *pvParameters );
 //void TaskSDClose( void *pvParameters );
 //------------------------------------------------------------------------------
 
-// Start the scheduler so the created tasks start executing. Need this for ESP32???
-//void vTaskStartScheduler();
-   
+//Hardware Timer
+hw_timer_t * timer = NULL;  //create timer handler
+volatile SemaphoreHandle_t timerSemaphore;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+volatile uint32_t isrCounter = 0;
+volatile uint32_t lastIsrAt = 0;
+
+void IRAM_ATTR onTimer(){
+// Increment the counter and set the time of ISR
+portENTER_CRITICAL_ISR(&timerMux);
+isrCounter++;
+lastIsrAt = millis();
+portEXIT_CRITICAL_ISR(&timerMux);
+// Give a semaphore that we can check in the loop
+xSemaphoreGiveFromISR(timerSemaphore, NULL);
+// It is safe to use digitalRead/Write here if you want to toggle an output
+  }
+  
 // the setup function runs once when you press reset or power the board
 void setup() {
 
   // initialize serial communication at 115200 bits per second:
-  Serial.begin(250000);
+  Serial.begin(115200);
 
   // Create timer
-  TimerHandle_t timer1 = xTimerCreate("HZ sample timer", pdMS_TO_TICKS(100), pdTRUE, 0, TaskGetData);
-  TimerHandle_t timer2 = xTimerCreate("flush timer", pdMS_TO_TICKS(500), pdTRUE, 0, TaskSDFlush);
+  //TimerHandle_t timer1 = xTimerCreate("HZ sample timer", pdMS_TO_TICKS(100), pdTRUE, 0, TaskGetData);
+  TimerHandle_t timer2 = xTimerCreate("flush timer", pdMS_TO_TICKS(5000), pdTRUE, 0, TaskSDFlush);
   TimerHandle_t timer3 = xTimerCreate("close file timer", pdMS_TO_TICKS(8000), pdTRUE, 0, TaskSDClose);
-  if (timer1 == NULL) {
+  /*if (timer1 == NULL) {
     Serial.println("Timer can not be created");
   } else {
     // Start timer
     if (xTimerStart(timer1, 0) == pdPASS) { // Start the scheduler
       Serial.println("Timer working");
     }
-  }
+  }*/
   if (timer2 == NULL) {
     Serial.println("Timer 2 can not be created");
   } else {
@@ -109,11 +123,33 @@ void setup() {
       Serial.println("Timer 2 working");
     }
   }
+    if (timer3 == NULL) {
+    Serial.println("Timer 3 can not be created");
+  } else {
+    // Start timer
+    if (xTimerStart(timer3, 0) == pdPASS) { // Start the scheduler
+      Serial.println("Timer 3 working");
+    }
+  }
+
+  // Create semaphore to inform us when the timer has fired
+  timerSemaphore = xSemaphoreCreateBinary();
+  // Use 1st timer of 4 (counted from zero).
+  // Set 80 divider for prescaler (see ESP32 Technical Reference Manual for more
+  // info).
+  timer = timerBegin(0, 80, true);
+  // Attach onTimer function to our timer.
+  timerAttachInterrupt(timer, &onTimer, true);
+  // Set alarm to call onTimer function every second (value in microseconds).
+  // Repeat the alarm (third parameter)
+  timerAlarmWrite(timer, 1000, true);
+  // Start an alarm
+  timerAlarmEnable(timer);
   
   //SPI.beginTransaction(SPISettings(80000000, LSBFIRST, SPI_MODE0));
 
   //Outputs, Pins, Buttons, Etc. 
-  pinMode(13, OUTPUT);  //set Built in LED to show writing on SD Card
+  pinMode(LED_BUILTIN, OUTPUT);  //set Built in LED to show writing on SD Card
   pinMode(4, INPUT); //button to turn recording on/off
   
   //ACCEL Setup and RUN
@@ -191,14 +227,14 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
   
 // Setup up Tasks and where to run ============================================================  
 // Now set up tasks to run independently.
-  /*xTaskCreatePinnedToCore(
+  xTaskCreatePinnedToCore(
     TaskGetData
     ,  "Get Data from Accel to Queue"   // A name just for humans
     ,  10000 // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
     ,  4  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
-    ,  TaskCore1);*/
+    ,  TaskCore1);
 
   xTaskCreatePinnedToCore(
     TaskSDWrite
@@ -236,7 +272,7 @@ void loop()
 /*--------------------------------------------------*/
 }
 
-void TaskGetData( TimerHandle_t timer1 )  // This is a task.
+/*void TaskGetData( TimerHandle_t timer1 )  // This is a task.
 {
     struct Data_t *pxPointerToxData_t;
 
@@ -267,18 +303,20 @@ void TaskGetData( TimerHandle_t timer1 )  // This is a task.
     Serial.print(pxPointerToxData_t->value1Z,5);
     Serial.println();
         
-}
+}*/
 
 void TaskSDFlush( TimerHandle_t timer2 )  // This is a task.
 {
   logfile.flush(); 
+  Serial.print("The Flush is IN");
 }
 
 void TaskSDClose( TimerHandle_t timer3 )  // This is a task.
 {
   logfile.close(); 
+  Serial.print("File = Done");
 }
-/*void TaskGetData(void *pvParameters)  // This is a task.
+void TaskGetData(void *pvParameters)  // This is a task.
 {
   (void) pvParameters;
   
@@ -292,7 +330,7 @@ void TaskSDClose( TimerHandle_t timer3 )  // This is a task.
       {
         //Serial.println("xQueueSend is not working"); 
       }
-      
+    if (xSemaphoreTake(timerSemaphore, 0) == pdTRUE){    
     sensors_event_t event;
     lis.getEvent(&event);
     sensors_event_t event2;
@@ -311,7 +349,14 @@ void TaskSDClose( TimerHandle_t timer3 )  // This is a task.
     Serial.print(pxPointerToxData_t->value1Y,5);
     Serial.print(',');
     Serial.print(pxPointerToxData_t->value1Z,5);
+    Serial.print(',');
+    Serial.print(pxPointerToxData_t->value2X,5);
+    Serial.print(',');
+    Serial.print(pxPointerToxData_t->value2Y,5);
+    Serial.print(',');
+    Serial.print(pxPointerToxData_t->value2Z,5);
     Serial.println();
+    }
     
     //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
     //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
@@ -321,7 +366,7 @@ void TaskSDClose( TimerHandle_t timer3 )  // This is a task.
     //vTaskDelay(intervalTicks);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
     }
     vTaskDelete( NULL );
-}*/
+}
 //------------------------------------------------------------------------------
 void TaskSDWrite(void *pvParameters)  // This is a task.
 {
@@ -354,11 +399,17 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
         logfile.println(); 
         /*Serial.print(pxData_RCV->usec); 
         Serial.print(',');
-        Serial.print(pxData_RCV->valueX,5);
+        Serial.print(pxData_RCV->value1X,5);
         Serial.print(',');
-        Serial.print(pxData_RCV->valueY,5);
+        Serial.print(pxData_RCV->value1Y,5);
         Serial.print(',');
-        Serial.print(pxData_RCV->valueZ,5);
+        Serial.print(pxData_RCV->value1Z,5);
+        Serial.print(',');
+        Serial.print(pxData_RCV->value2X,5);
+        Serial.print(',');
+        Serial.print(pxData_RCV->value2Y,5);
+        Serial.print(',');
+        Serial.print(pxData_RCV->value2Z,5);
         Serial.println(); */
  
         //uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
