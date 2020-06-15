@@ -45,10 +45,13 @@ struct Data_t {
   float value2X;
   float value2Y;
   float value2Z;
-} xData_t;
+} MY_Data_t;
 
 //Declare Queue data type for FreeRTOS
 QueueHandle_t DataQueue = NULL;
+
+void *ptrtostruct;
+void *ptr;
 
 //------------------------------------------------------------------------------
 // Accel Lis3dh definitions, SPI or I2C
@@ -85,30 +88,20 @@ volatile SemaphoreHandle_t timerSemaphore;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 volatile uint32_t isrCounter = 0;
 volatile uint32_t lastIsrAt = 0;
-
-void IRAM_ATTR onTimer(){
-// Increment the counter and set the time of ISR
-portENTER_CRITICAL_ISR(&timerMux);
-isrCounter++;
-lastIsrAt = millis();
-portEXIT_CRITICAL_ISR(&timerMux);
-// Give a semaphore that we can check in the loop
-xSemaphoreGiveFromISR(timerSemaphore, NULL);
-// It is safe to use digitalRead/Write here if you want to toggle an output
-  }
-  
-// the setup function runs once when you press reset or power the board
+void IRAM_ATTR onTimer();  //Initialize onTimer Function
+ 
+// the setup function runs once when you press reset or power the board=================================================================================================================================
 void setup() {
 
   // initialize serial communication at 115200 bits per second:
   Serial.begin(115200);
 
   //Queue Setup
-  DataQueue = xQueueCreate(1000, sizeof( &xData_t ));
+  DataQueue = xQueueCreate(100, sizeof( MY_Data_t ));
   if(DataQueue == NULL){
      Serial.println("Error Creating the Queue");
    }
-   
+
   // Create timer
   //TimerHandle_t timer1 = xTimerCreate("HZ sample timer", pdMS_TO_TICKS(100), pdTRUE, 0, TaskGetData);
   TimerHandle_t timer2 = xTimerCreate("flush timer", pdMS_TO_TICKS(5000), pdTRUE, 0, TaskSDFlush);
@@ -148,11 +141,11 @@ void setup() {
   timerAttachInterrupt(timer, &onTimer, true);
   // Set alarm to call onTimer function every second (value in microseconds).
   // Repeat the alarm (third parameter)
-  timerAlarmWrite(timer, 10000, true);
+  timerAlarmWrite(timer, 1000000, true);
   // Start an alarm
   timerAlarmEnable(timer);
   
-  //SPI.beginTransaction(SPISettings(80000000, LSBFIRST, SPI_MODE0));
+  //SPI.beginTransaction(SPISettings(80000000, MSBFIRST, SPI_MODE0));
 
   //Outputs, Pins, Buttons, Etc. 
   pinMode(LED_BUILTIN, OUTPUT);  //set Built in LED to show writing on SD Card
@@ -234,14 +227,14 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
     ,  "Get Data from Accel to Queue"   // A name just for humans
     ,  10000 // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
-    ,  4  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
     ,  TaskCore1);
 
   xTaskCreatePinnedToCore(
     TaskSDWrite
     ,  "Get Data from Queue"
-    ,  20000 // Stack size
+    ,  10000 // Stack size
     ,  NULL
     ,  3 // Priority
     ,  NULL 
@@ -265,7 +258,7 @@ if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
     ,  NULL 
     ,  TaskCore1);*/    
 }
-
+//================================================================================================================================
 void loop()
 {
   // Empty. Things are done in Tasks.
@@ -274,39 +267,21 @@ void loop()
 /*--------------------------------------------------*/
 }
 
-/*void TaskGetData( TimerHandle_t timer1 )  // This is a task.
-{
-    struct Data_t *pxPointerToxData_t;
-
-    pxPointerToxData_t = &xData_t; 
-
-    if(xQueueSend( DataQueue, (void *) &pxPointerToxData_t, 2000 ) != pdPASS )  //portMAX_DELAY
-      {
-        Serial.println("xQueueSend is not working"); 
-      }
-       
-    sensors_event_t event;
-    lis.getEvent(&event);
-    sensors_event_t event2;
-    lis2.getEvent(&event2);
-    pxPointerToxData_t->usec = micros();
-    pxPointerToxData_t->value1X = event.acceleration.x;
-    pxPointerToxData_t->value1Y = event.acceleration.y;
-    pxPointerToxData_t->value1Z = event.acceleration.z;
-    pxPointerToxData_t->value2X = event2.acceleration.x;
-    pxPointerToxData_t->value2Y = event2.acceleration.y;
-    pxPointerToxData_t->value2Z = event2.acceleration.z;
-    Serial.print(pxPointerToxData_t->usec); 
-    Serial.print(',');
-    Serial.print(pxPointerToxData_t->value1X,5);
-    Serial.print(',');
-    Serial.print(pxPointerToxData_t->value1Y,5);
-    Serial.print(',');
-    Serial.print(pxPointerToxData_t->value1Z,5);
-    Serial.println();
-        
-}*/
-
+//================================================================================================================================
+//================================================================================================================================
+void IRAM_ATTR onTimer(){
+// Increment the counter and set the time of ISR
+portENTER_CRITICAL_ISR(&timerMux);
+isrCounter++;
+lastIsrAt = millis();
+portEXIT_CRITICAL_ISR(&timerMux);
+// Give a semaphore that we can check in the loop
+xSemaphoreGiveFromISR(timerSemaphore, NULL);
+Serial.println("Timer went off");
+Serial.println(lastIsrAt);
+// It is safe to use digitalRead/Write here if you want to toggle an output
+}
+  
 void TaskSDFlush( TimerHandle_t timer2 )  // This is a task.
 {
   logfile.flush(); 
@@ -318,50 +293,107 @@ void TaskSDClose( TimerHandle_t timer3 )  // This is a task.
   logfile.close(); 
   Serial.print("File = Done");
 }
-void TaskGetData(void *pvParameters)  // This is a task.
-{
-  (void) pvParameters;
-  
-  struct Data_t *pxPointerToxData_t;
-
-  for (;;) // A Task shall never return or exit.
+/////////////////////////////////////////////////////////////////////////////////////
+/*void TaskGetData()  // This is a task.
   {
-    pxPointerToxData_t = &xData_t; 
+    QueueHandle_t DataQueue;
+    
+    struct Data_t *pSendData;  //Create pointer to the struct
 
-    if(xQueueSend( DataQueue, (void *) &pxPointerToxData_t, 2000 ) != pdPASS )  //portMAX_DELAY
-      {
-        //Serial.println("xQueueSend is not working"); 
-      }
     if (xSemaphoreTake(timerSemaphore, 0) == pdTRUE){    
+
+    ptrtostruct = pvPortMalloc(sizeof (MY_Data_t));
+      
     sensors_event_t event;
     lis.getEvent(&event);
     sensors_event_t event2;
     lis2.getEvent(&event2);
-    pxPointerToxData_t->usec = micros();
-    pxPointerToxData_t->value1X = event.acceleration.x;
-    pxPointerToxData_t->value1Y = event.acceleration.y;
-    pxPointerToxData_t->value1Z = event.acceleration.z;
-    pxPointerToxData_t->value2X = event2.acceleration.x;
-    pxPointerToxData_t->value2Y = event2.acceleration.y;
-    pxPointerToxData_t->value2Z = event2.acceleration.z;
-    /*Serial.print(pxPointerToxData_t->usec); 
+    pSendData->usec = micros();
+    pSendData->value1X = event.acceleration.x;
+    pSendData->value1Y = event.acceleration.y;
+    pSendData->value1Z = event.acceleration.z;
+    pSendData->value2X = event2.acceleration.x;
+    pSendData->value2Y = event2.acceleration.y;
+    pSendData->value2Z = event2.acceleration.z;
+    Serial.print(event.acceleration.y);
+    Serial.print(pSendData->usec); 
     Serial.print(',');
-    Serial.print(pxPointerToxData_t->value1X,5);
+    Serial.print(pSendData->value1X,5);
     Serial.print(',');
-    Serial.print(pxPointerToxData_t->value1Y,5);
+    Serial.print(pSendData->value1Y,5);
     Serial.print(',');
-    Serial.print(pxPointerToxData_t->value1Z,5);
+    Serial.print(pSendData->value1Z,5);
     Serial.print(',');
-    Serial.print(pxPointerToxData_t->value2X,5);
+    Serial.print(pSendData->value2X,5);
     Serial.print(',');
-    Serial.print(pxPointerToxData_t->value2Y,5);
+    Serial.print(pSendData->value2Y,5);
     Serial.print(',');
-    Serial.print(pxPointerToxData_t->value2Z,5);
-    Serial.println();*/
+    Serial.print(pSendData->value2Z,5);
+    Serial.println();
+
+    if(xQueueSend( DataQueue, &pSendData, 2000 ) != pdPASS )  //portMAX_DELAY
+      {
+        Serial.println("xQueueSend is not working"); 
+      }
     }
     else {
       Serial.print("nothing happening");
     }
+    //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
+    //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
+    //digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
+    //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
+ 
+    //vTaskDelay(intervalTicks);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
+    }*/
+
+////////////////////////////////////////////////////////////////////////////////////////////
+void TaskGetData(void *pvParameters)  // This is a task.
+{
+  (void) pvParameters;
+  int D = 0;
+  struct Data_t *pSendData;  //Create pointer to the struct
+
+  for (;;) // A Task shall never return or exit.
+  {
+    if (xSemaphoreTake(timerSemaphore, 0) == pdTRUE){
+      /*if(xQueueSend( DataQueue, (void *) &pSendData, 2000 ) != pdPASS )  //portMAX_DELAY
+      {
+        Serial.println("xQueueSend is not working"); 
+      }*/
+    sensors_event_t event;
+    lis.getEvent(&event);
+    sensors_event_t event2;
+    lis2.getEvent(&event2);
+    Serial.print("Start logging data cheese head"); 
+    pSendData->usec = micros();
+    pSendData->value1X = event.acceleration.x;
+    pSendData->value1Y = event.acceleration.y;
+    pSendData->value1Z = event.acceleration.z;
+    pSendData->value2X = event2.acceleration.x;
+    pSendData->value2Y = event2.acceleration.y;
+    pSendData->value2Z = event2.acceleration.z;
+    Serial.print(pSendData->usec); 
+    Serial.print(',');
+    Serial.print(pSendData->value1X,5);
+    Serial.print(',');
+    Serial.print(pSendData->value1Y,5);
+    Serial.print(',');
+    Serial.print(pSendData->value1Z,5);
+    Serial.print(',');
+    Serial.print(pSendData->value2X,5);
+    Serial.print(',');
+    Serial.print(pSendData->value2Y,5);
+    Serial.print(',');
+    Serial.print(pSendData->value2Z,5);
+    Serial.println();
+    }
+    
+    D++;
+    Serial.println(D);
+    //else {
+      //Serial.print("nothing happening");
+    //}
     //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
     //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
     //digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
@@ -375,49 +407,51 @@ void TaskGetData(void *pvParameters)  // This is a task.
 void TaskSDWrite(void *pvParameters)  // This is a task.
 {
   (void) pvParameters;
-  struct Data_t xData_RCV, *pxData_RCV;
+  
+  struct Data_t *RCV_Data; 
   
   for (;;)
   {
 
     if(DataQueue != NULL ) 
     {
-      if( xQueueReceive( DataQueue, &( pxData_RCV ), 2000 ) != pdPASS )   //portMAX_DELAY
+      if( xQueueReceive( DataQueue, &RCV_Data, 10000 ) != pdPASS )   //portMAX_DELAY
       {
-        //Serial.println("xQueueRecieve is not working");
+        Serial.println("xQueueRecieve is not working");
       }
+        ptr = pvPortMalloc(sizeof (MY_Data_t));
         
-        logfile.print(pxData_RCV->usec);
+        logfile.print(RCV_Data->usec);
         logfile.print(',');
-        logfile.print(pxData_RCV->value1X,4);
+        logfile.print(RCV_Data->value1X,4);
         logfile.print(',');
-        logfile.print(pxData_RCV->value1Y,4);
+        logfile.print(RCV_Data->value1Y,4);
         logfile.print(',');
-        logfile.print(pxData_RCV->value1Z,4);
+        logfile.print(RCV_Data->value1Z,4);
         logfile.print(',');
-        logfile.print(pxData_RCV->value2X,4);
+        logfile.print(RCV_Data->value2X,4);
         logfile.print(',');
-        logfile.print(pxData_RCV->value2Y,4);
+        logfile.print(RCV_Data->value2Y,4);
         logfile.print(',');
-        logfile.print(pxData_RCV->value2Z,4);
+        logfile.print(RCV_Data->value2Z,4);
         logfile.println(); 
-        Serial.print(pxData_RCV->usec); 
+        /*Serial.print(RCV_Data->usec); 
         Serial.print(',');
-        Serial.print(pxData_RCV->value1X,5);
+        Serial.print(RCV_Data->value1X,5);
         Serial.print(',');
-        Serial.print(pxData_RCV->value1Y,5);
+        Serial.print(RCV_Data->value1Y,5);
         Serial.print(',');
-        Serial.print(pxData_RCV->value1Z,5);
+        Serial.print(RCV_Data->value1Z,5);
         Serial.print(',');
-        Serial.print(pxData_RCV->value2X,5);
+        Serial.print(RCV_Data->value2X,5);
         Serial.print(',');
-        Serial.print(pxData_RCV->value2Y,5);
+        Serial.print(RCV_Data->value2Y,5);
         Serial.print(',');
-        Serial.print(pxData_RCV->value2Z,5);
-        Serial.println(); 
+        Serial.print(RCV_Data->value2Z,5);
+        Serial.println(); */
  
         uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
-        Serial.println(FreeSpace); 
+        Serial.println(FreeSpace);
       }
    }
    vTaskDelete( NULL ); 
