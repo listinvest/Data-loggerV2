@@ -34,17 +34,11 @@ SdFat SD;
 int count = 0; 
 unsigned long Micro = 0; 
 
-volatile int interruptCounter;
-int totalInterruptCounter;
- 
 hw_timer_t * timer = NULL;
-portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+//portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 //Create Interrupt Semaphore
 SemaphoreHandle_t timerSemaphore;
-
-//TaskHandle_t TaskGetData = NULL; 
-//TaskHandle_t vTimerISR = NULL; 
 
 //static signed BaseType_t xHigherPriorityTaskWoken;
 
@@ -88,10 +82,10 @@ void TaskGetData(void *pvParameters)  // This is a task.
 
 void IRAM_ATTR vTimerISR()
   {
-  portENTER_CRITICAL_ISR(&timerMux);
-  interruptCounter++;
+  //portENTER_CRITICAL_ISR(&timerMux);
+  //interruptCounter++;
   xSemaphoreGiveFromISR( timerSemaphore, NULL );  //Unblock the task by releasing the semaphore. */
-  portEXIT_CRITICAL_ISR(&timerMux); 
+  //portEXIT_CRITICAL_ISR(&timerMux); 
   //xHigherPriorityTaskWoken = pdFALSE;  
   }
 
@@ -148,7 +142,7 @@ void setup() {
   }
 
 // Create file and prepare it ============================================================
-  logfile = SD.open(filename, O_CREAT | O_WRITE); //FILE_WRITE);
+  logfile = SD.open(filename, O_CREAT | O_WRITE); //FILE_WRITE); O_CREAT | 
   if( ! logfile ) {
     Serial.print("Couldnt create "); 
     Serial.println(filename);
@@ -188,7 +182,9 @@ void setup() {
     ,  NULL
     ,  3 // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
-    ,  TaskCore1);
+    ,  TaskCore0);
+
+    
 
     // Create Timer ===============================================================================
   timer = timerBegin(1, 80, true);

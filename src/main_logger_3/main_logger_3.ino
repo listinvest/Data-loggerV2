@@ -1,5 +1,5 @@
 // Data logger:  For measuring acceleration from LIS3DH
-// Hardware:  Adafruit ESP32, Adalogger feather+RTC, 1x LIS3DH accels (Currently, 2x in future) 
+// Hardware:  Adafruit ESP32, Adalogger feather+RTC, 2x LIS3DH accels
 // Created:  May 12 2020
 // Updated:
 // Uses SPI for SD, I2C for Accels, hoping for 1000 Hz. sampling 
@@ -45,13 +45,7 @@ struct Data_t {
   float value2X;
   float value2Y;
   float value2Z;
-} MY_Data_t;
-
-//Declare Queue data type for FreeRTOS
-QueueHandle_t DataQueue = NULL;
-
-void *ptrtostruct;
-void *ptr;
+} TX_Data_t[10], RX_Data_t[10];
 
 //------------------------------------------------------------------------------
 // Accel Lis3dh definitions, SPI or I2C
@@ -76,6 +70,7 @@ Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH_CS2);
 
 //------------------------------------------------------------------------------
 // define tasks for Sensor Data and SD Write
+void TaskLed( void *pvParamaters );
 void TaskGetData( void *pvParameters );
 void TaskSDWrite( void *pvParameters );
 //void TaskSDFlush( void *pvParameters );
@@ -84,268 +79,39 @@ void TaskSDWrite( void *pvParameters );
 
 //Hardware Timer
 hw_timer_t * timer = NULL;  //create timer handler
-volatile SemaphoreHandle_t timerSemaphore;
-portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
-volatile uint32_t isrCounter = 0;
-volatile uint32_t lastIsrAt = 0;
-void IRAM_ATTR onTimer();  //Initialize onTimer Function
- 
-// the setup function runs once when you press reset or power the board=================================================================================================================================
-void setup() {
 
-  // initialize serial communication at 115200 bits per second:
-  Serial.begin(115200);
+//Declare Queue data type for FreeRTOS
+QueueHandle_t DataQueue = NULL;
 
-  //Queue Setup
-  DataQueue = xQueueCreate(100, sizeof( MY_Data_t ));
-  if(DataQueue == NULL){
-     Serial.println("Error Creating the Queue");
-   }
+//ISR tools
+//Create Interrupt Semaphore
+int count = 0;
+SemaphoreHandle_t timerSemaphore; 
+SemaphoreHandle_t interruptSemaphore;
 
-  // Create timer
-  //TimerHandle_t timer1 = xTimerCreate("HZ sample timer", pdMS_TO_TICKS(100), pdTRUE, 0, TaskGetData);
-  TimerHandle_t timer2 = xTimerCreate("flush timer", pdMS_TO_TICKS(5000), pdTRUE, 0, TaskSDFlush);
-  TimerHandle_t timer3 = xTimerCreate("close file timer", pdMS_TO_TICKS(8000), pdTRUE, 0, TaskSDClose);
-  /*if (timer1 == NULL) {
-    Serial.println("Timer can not be created");
-  } else {
-    // Start timer
-    if (xTimerStart(timer1, 0) == pdPASS) { // Start the scheduler
-      Serial.println("Timer working");
-    }
-  }*/
-  if (timer2 == NULL) {
-    Serial.println("Timer 2 can not be created");
-  } else {
-    // Start timer
-    if (xTimerStart(timer2, 0) == pdPASS) { // Start the scheduler
-      Serial.println("Timer 2 working");
-    }
+void *ptrtostruct;
+void *ptr;
+
+/////////////////////////////////////////////////////////////////////////////////////
+void IRAM_ATTR vTimerISR()  //Timer ISR 
+  {
+  // Increment the counter and set the time of ISR
+  //portENTER_CRITICAL_ISR(&timerMux);
+  xSemaphoreGiveFromISR(timerSemaphore, NULL);
+  //portEXIT_CRITICAL_ISR(&timerMux);
   }
-    if (timer3 == NULL) {
-    Serial.println("Timer 3 can not be created");
-  } else {
-    // Start timer
-    if (xTimerStart(timer3, 0) == pdPASS) { // Start the scheduler
-      Serial.println("Timer 3 working");
-    }
-  }
-
-  // Create semaphore to inform us when the timer has fired
-  timerSemaphore = xSemaphoreCreateBinary();
-  // Use 1st timer of 4 (counted from zero).
-  // Set 80 divider for prescaler (see ESP32 Technical Reference Manual for more
-  // info).
-  timer = timerBegin(0, 80, true);
-  // Attach onTimer function to our timer.
-  timerAttachInterrupt(timer, &onTimer, true);
-  // Set alarm to call onTimer function every second (value in microseconds).
-  // Repeat the alarm (third parameter)
-  timerAlarmWrite(timer, 1000000, true);
-  // Start an alarm
-  timerAlarmEnable(timer);
-  
-  //SPI.beginTransaction(SPISettings(80000000, MSBFIRST, SPI_MODE0));
-
-  //Outputs, Pins, Buttons, Etc. 
-  pinMode(LED_BUILTIN, OUTPUT);  //set Built in LED to show writing on SD Card
-  pinMode(27, INPUT); //button to turn recording on/off, In [HIGH]
-  
-  //ACCEL Setup and RUN
-  if (! lis.begin(0x18)) {   // change this to 0x19 for alternative i2c address
-  Serial.println("Couldnt start");
-  while (1) yield();
-  }
-  Serial.println("LIS3DH Sensor 1 found!");
-
-  if (! lis2.begin(0x19)) {   // Sensor 2, SDO is 3V
-  Serial.println("Couldnt start Sensor 2");
-  while (1) yield();
-  }
-  Serial.println("LIS3DH Sensor 2 found!");
-  
-  // Set accel range  
-  lis.setRange(LIS3DH_RANGE_16_G);   // 2, 4, 8 or 16 G!
-  lis2.setRange(LIS3DH_RANGE_16_G);
-  // Set DataRate
-  lis.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); //OPTIONS:  LIS3DH_DATARATE_400_HZ, LIS3DH_DATARATE_LOWPOWER_1K6HZ, LIS3DH_DATARATE_LOWPOWER_5KHZ
-  lis2.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); 
-
-
-// SD CARD SETUP ====================================================================
-// see if the card is present and can be initialized:  (Use highest SD clock possible, but lower if has error, 15 Mhz works, possible to go to to 25 Mhz if sample rate is low enough
-if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
-  Serial.println("Card init. failed!");
-  while (1) yield(); 
-}
-
-// Create filename scheme ====================================================================
-  char filename[15];
-  //  Setup filename to be appropriate for what you are testing
-  strcpy(filename, "/DATA00.TXT");
-  for (uint8_t i = 0; i < 100; i++) {
-    filename[5] = '0' + i/10;
-    filename[6] = '0' + i%10;
-    // create if does not exist, do not open existing, write, sync after write
-    if (! sd.exists(filename)) {
-      break;
-    }
-  }
-
-// Create file and prepare it ============================================================
-  logfile = sd.open(filename, O_CREAT | O_WRITE);  //O_WRONLY | O_CREAT | O_EXCL ); // | O_TRUNC )); 
-  if( ! logfile ) {
-    Serial.print("Couldnt create "); 
-    Serial.println(filename);
-    while (1) yield(); 
-  }
-  Serial.print("Writing to "); 
-  Serial.println(filename);
-
-  //Column labels
-  logfile.print("Time"); 
-  logfile.print(",");
-  logfile.print("Sensor 1 X");
-  logfile.print(",");
-  logfile.print("Sensor 1 Y");
-  logfile.print(",");
-  logfile.print("Sensor 1 Z");
-  logfile.print(",");
-  logfile.print("Sensor 2 X");
-  logfile.print(",");
-  logfile.print("Sensor 2 Y");
-  logfile.print(",");
-  logfile.print("Sensor 2 Z");
-  logfile.println();
-  
-
-  
-// Setup up Tasks and where to run ============================================================  
-// Now set up tasks to run independently.
-  xTaskCreatePinnedToCore(
-    TaskGetData
-    ,  "Get Data from Accel to Queue"   // A name just for humans
-    ,  10000 // This stack size can be checked & adjusted by reading the Stack Highwater
-    ,  NULL
-    ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-    ,  NULL 
-    ,  TaskCore1);
-
-  xTaskCreatePinnedToCore(
-    TaskSDWrite
-    ,  "Get Data from Queue"
-    ,  10000 // Stack size
-    ,  NULL
-    ,  3 // Priority
-    ,  NULL 
-    ,  TaskCore0);
-
-  /*xTaskCreatePinnedToCore(
-    TaskSDFlush
-    ,  "Write Data to Card"
-    ,  10000 // Stack size
-    ,  NULL
-    ,  3  // Priority
-    ,  NULL 
-    ,  TaskCore1);*/
-
-  /*xTaskCreatePinnedToCore(
-    TaskSDClose
-    ,  "Close the File"
-    ,  10000 // Stack size
-    ,  NULL
-    ,  3  // Priority
-    ,  NULL 
-    ,  TaskCore1);*/    
-}
-//================================================================================================================================
-void loop()
-{
-  // Empty. Things are done in Tasks.
-/*--------------------------------------------------*/
-/*---------------------- Tasks ---------------------*/
-/*--------------------------------------------------*/
-}
-
-//================================================================================================================================
-//================================================================================================================================
-void IRAM_ATTR onTimer(){
-// Increment the counter and set the time of ISR
-portENTER_CRITICAL_ISR(&timerMux);
-isrCounter++;
-lastIsrAt = millis();
-portEXIT_CRITICAL_ISR(&timerMux);
-// Give a semaphore that we can check in the loop
-xSemaphoreGiveFromISR(timerSemaphore, NULL);
-Serial.println("Timer went off");
-Serial.println(lastIsrAt);
-// It is safe to use digitalRead/Write here if you want to toggle an output
-}
-  
-void TaskSDFlush( TimerHandle_t timer2 )  // This is a task.
-{
+/////////////////////////////////////////////////////////////////////////////////////  
+void TaskSDFlush( TimerHandle_t timer2 )  // This is SD flush task for insurance
+  {
   logfile.flush(); 
   Serial.print("The Flush is IN");
-}
-
-void TaskSDClose( TimerHandle_t timer3 )  // This is a task.
-{
+  }
+/////////////////////////////////////////////////////////////////////////////////////
+void TaskSDClose( TimerHandle_t timer3 )  // This is log files and close
+  {
   logfile.close(); 
   Serial.print("File = Done");
-}
-/////////////////////////////////////////////////////////////////////////////////////
-/*void TaskGetData()  // This is a task.
-  {
-    QueueHandle_t DataQueue;
-    
-    struct Data_t *pSendData;  //Create pointer to the struct
-
-    if (xSemaphoreTake(timerSemaphore, 0) == pdTRUE){    
-
-    ptrtostruct = pvPortMalloc(sizeof (MY_Data_t));
-      
-    sensors_event_t event;
-    lis.getEvent(&event);
-    sensors_event_t event2;
-    lis2.getEvent(&event2);
-    pSendData->usec = micros();
-    pSendData->value1X = event.acceleration.x;
-    pSendData->value1Y = event.acceleration.y;
-    pSendData->value1Z = event.acceleration.z;
-    pSendData->value2X = event2.acceleration.x;
-    pSendData->value2Y = event2.acceleration.y;
-    pSendData->value2Z = event2.acceleration.z;
-    Serial.print(event.acceleration.y);
-    Serial.print(pSendData->usec); 
-    Serial.print(',');
-    Serial.print(pSendData->value1X,5);
-    Serial.print(',');
-    Serial.print(pSendData->value1Y,5);
-    Serial.print(',');
-    Serial.print(pSendData->value1Z,5);
-    Serial.print(',');
-    Serial.print(pSendData->value2X,5);
-    Serial.print(',');
-    Serial.print(pSendData->value2Y,5);
-    Serial.print(',');
-    Serial.print(pSendData->value2Z,5);
-    Serial.println();
-
-    if(xQueueSend( DataQueue, &pSendData, 2000 ) != pdPASS )  //portMAX_DELAY
-      {
-        Serial.println("xQueueSend is not working"); 
-      }
-    }
-    else {
-      Serial.print("nothing happening");
-    }
-    //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-    //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
-    //digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
-    //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
- 
-    //vTaskDelay(intervalTicks);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
-    }*/
+  }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 void TaskGetData(void *pvParameters)  // This is a task.
@@ -356,7 +122,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
 
   for (;;) // A Task shall never return or exit.
   {
-    if (xSemaphoreTake(timerSemaphore, 0) == pdTRUE){
+    if (xSemaphoreTake(timerSemaphore, 10) == pdTRUE){
       /*if(xQueueSend( DataQueue, (void *) &pSendData, 2000 ) != pdPASS )  //portMAX_DELAY
       {
         Serial.println("xQueueSend is not working"); 
@@ -388,18 +154,8 @@ void TaskGetData(void *pvParameters)  // This is a task.
     Serial.print(pSendData->value2Z,5);
     Serial.println();
     }
-    
-    D++;
-    Serial.println(D);
-    //else {
-      //Serial.print("nothing happening");
-    //}
-    //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-    //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
-    //digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
-    //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
- 
-    //vTaskDelay(intervalTicks);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
+        
+
     }
     vTaskDelete( NULL );
 }
@@ -415,11 +171,11 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
 
     if(DataQueue != NULL ) 
     {
-      if( xQueueReceive( DataQueue, &RCV_Data, 10000 ) != pdPASS )   //portMAX_DELAY
+      if( xQueueReceive( DataQueue, &RCV_Data, portMAX_DELAY ) != pdPASS )   //portMAX_DELAY
       {
         Serial.println("xQueueRecieve is not working");
       }
-        ptr = pvPortMalloc(sizeof (MY_Data_t));
+        ptr = pvPortMalloc(sizeof ( Data_t));
         
         logfile.print(RCV_Data->usec);
         logfile.print(',');
@@ -486,3 +242,223 @@ void TaskSDClose(void *pvParameters)  // This is a task.
   }
   vTaskDelete ( NULL ); 
 }*/
+
+void interruptHandler() 
+  {
+  xSemaphoreGiveFromISR(interruptSemaphore, NULL); //Gives permission from button interrupt
+  }
+
+void TaskLed(void *pvParameters)
+{
+  (void) pvParameters;
+
+  pinMode(LED_BUILTIN, OUTPUT);
+
+  for (;;) {
+    
+    // Take the semaphore.
+    if (xSemaphoreTake(interruptSemaphore, portMAX_DELAY) == pdPASS) {
+      digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+        //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
+    //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
+    //digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
+    //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
+ 
+    //vTaskDelay(intervalTicks);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
+      
+    }
+    
+  }
+}
+
+
+//===================================================================================================================
+//===================================================================================================================
+// the setup function runs once when you press reset or power the board
+void setup() {
+
+  // initialize serial communication at 115200 bits per second:
+  Serial.begin(115200);
+
+  //Queue Setup
+  DataQueue = xQueueCreate(100, sizeof( Data_t ));
+  if(DataQueue == NULL){
+     Serial.println("Error Creating the Queue");
+   }
+
+  //============================================================================================================
+  //SPI.beginTransaction(SPISettings(80000000, MSBFIRST, SPI_MODE0));
+
+  //Outputs, Pins, Buttons, Etc. 
+  pinMode(LED_BUILTIN, OUTPUT);  //set Built in LED to show writing on SD Card
+  pinMode(27, INPUT); //button to turn recording on/off, In [HIGH]
+
+    //Create button Interrupt Semaphore
+  interruptSemaphore = xSemaphoreCreateBinary();
+  if (interruptSemaphore != NULL) {
+    // Attach interrupt for Arduino digital pin
+    attachInterrupt(digitalPinToInterrupt(27), interruptHandler, FALLING);
+  }
+  
+  //ACCEL Setup and RUN
+  if (! lis.begin(0x18)) {   // change this to 0x19 for alternative i2c address
+  Serial.println("Couldnt start");
+  while (1) yield();
+  }
+  Serial.println("LIS3DH Sensor 1 found!");
+
+  if (! lis2.begin(0x19)) {   // Sensor 2, SDO is 3V
+  Serial.println("Couldnt start Sensor 2");
+  while (1) yield();
+  }
+  Serial.println("LIS3DH Sensor 2 found!");
+  
+  // Set accel range  
+  lis.setRange(LIS3DH_RANGE_16_G);   // 2, 4, 8 or 16 G!
+  lis2.setRange(LIS3DH_RANGE_16_G);
+  // Set DataRate
+  lis.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); //OPTIONS:  LIS3DH_DATARATE_400_HZ, LIS3DH_DATARATE_LOWPOWER_1K6HZ, LIS3DH_DATARATE_LOWPOWER_5KHZ
+  lis2.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); 
+
+  // SD CARD SETUP ====================================================================
+  // see if the card is present and can be initialized:  (Use highest SD clock possible, but lower if has error, 15 Mhz works, possible to go to to 25 Mhz if sample rate is low enough
+  if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
+    Serial.println("Card init. failed!");
+    while (1) yield(); 
+  }
+
+  // Create filename scheme ====================================================================
+  char filename[15];
+  //  Setup filename to be appropriate for what you are testing
+  strcpy(filename, "/DATA00.TXT");
+  for (uint8_t i = 0; i < 100; i++) {
+    filename[5] = '0' + i/10;
+    filename[6] = '0' + i%10;
+    // create if does not exist, do not open existing, write, sync after write
+    if (! sd.exists(filename)) {
+      break;
+    }
+  }
+
+  // Create file and prepare it ============================================================
+  logfile = sd.open(filename, O_CREAT | O_WRITE);  
+  if( ! logfile ) {
+    Serial.print("Couldnt create "); 
+    Serial.println(filename);
+    while (1) yield(); 
+  }
+  Serial.print("Writing to "); 
+  Serial.println(filename);
+
+  //Column labels
+  logfile.print("Time"); 
+  logfile.print(",");
+  logfile.print("Sensor 1 X");
+  logfile.print(",");
+  logfile.print("Sensor 1 Y");
+  logfile.print(",");
+  logfile.print("Sensor 1 Z");
+  logfile.print(",");
+  logfile.print("Sensor 2 X");
+  logfile.print(",");
+  logfile.print("Sensor 2 Y");
+  logfile.print(",");
+  logfile.print("Sensor 2 Z");
+  logfile.println();
+
+  // Create semaphore to inform us when the timer has fired
+  timerSemaphore = xSemaphoreCreateBinary();
+   
+  // Setup up Tasks and where to run ============================================================  
+  // Now set up tasks to run independently.
+  xTaskCreatePinnedToCore(
+    TaskGetData
+    ,  "Get Data from Accel to Queue"   // A name just for humans
+    ,  10000 // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  NULL
+    ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  NULL 
+    ,  TaskCore0);
+
+  xTaskCreatePinnedToCore(
+    TaskSDWrite
+    ,  "Get Data from Queue"
+    ,  10000 // Stack size
+    ,  NULL
+    ,  3 // Priority
+    ,  NULL 
+    ,  TaskCore0);
+
+  /*xTaskCreatePinnedToCore(
+    TaskSDFlush
+    ,  "Write Data to Card"
+    ,  10000 // Stack size
+    ,  NULL
+    ,  3  // Priority
+    ,  NULL 
+    ,  TaskCore1);*/
+
+  /*xTaskCreatePinnedToCore(
+    TaskSDClose
+    ,  "Close the File"
+    ,  10000 // Stack size
+    ,  NULL
+    ,  3  // Priority
+    ,  NULL 
+    ,  TaskCore1);*/   
+
+  xTaskCreate(TaskLed, // Task function
+              "Led", // Task name
+              2048, // Stack size 
+              NULL, 
+              1, // Priority
+              NULL );     
+
+// Create Timer ===============================================================================
+  // Use 1st timer of 4 (counted from zero).
+  // Set 80 divider for prescaler (see ESP32 Technical Reference Manual for more
+  // info).
+  timer = timerBegin(0, 80, true);
+  // Attach onTimer function to our timer.
+  timerAttachInterrupt(timer, &vTimerISR, true);
+  // Set alarm to call onTimer function every second (value in microseconds).
+  // Repeat the alarm (third parameter)
+  timerAlarmWrite(timer, 1000000, true);
+  // Start an alarm
+  timerAlarmEnable(timer);
+
+  //=============================================================================================================
+  // Create software timers
+  TimerHandle_t timer2 = xTimerCreate("flush timer", pdMS_TO_TICKS(5000), pdTRUE, 0, TaskSDFlush);
+  TimerHandle_t timer3 = xTimerCreate("close file timer", pdMS_TO_TICKS(8000), pdTRUE, 0, TaskSDClose);
+  if (timer2 == NULL) {
+    Serial.println("Timer 2 can not be created");
+  } else {
+    // Start timer
+    if (xTimerStart(timer2, 0) == pdPASS) { // Start the scheduler
+      Serial.println("Timer 2 working");
+    }
+  }
+    if (timer3 == NULL) {
+    Serial.println("Timer 3 can not be created");
+  } else {
+    // Start timer
+    if (xTimerStart(timer3, 0) == pdPASS) { // Start the scheduler
+      Serial.println("Timer 3 working");
+    }
+  }
+
+  
+}
+  
+//================================================================================================================================
+void loop()
+{
+  // Empty. Things are done in Tasks.
+/*--------------------------------------------------*/
+/*---------------------- Tasks ---------------------*/
+/*--------------------------------------------------*/
+}
+
+//================================================================================================================================
+//================================================================================================================================
