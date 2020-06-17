@@ -54,38 +54,37 @@ void TaskGetData(void *pvParameters)  // This is a task.
   
   for (;;) // A Task shall never return or exit.
   {
-    if (xSemaphoreTake(timerSemaphore, 1000) == pdTRUE)
+    if (xSemaphoreTake(timerSemaphore, 10) == pdTRUE)
     {
     sensors_event_t event; 
     lis.getEvent(&event);
-    float Micro = micros();
-    /*logfile.print(Micro); 
-    logfile.print("\t");
-    logfile.print(event.acceleration.x,3);
-    logfile.print("\t");
-    logfile.print(event.acceleration.y,3);
-    logfile.print("\t");
-    logfile.print(event.acceleration.z,3);
-    logfile.println();*/
+    sensors_event_t event2;
+    lis2.getEvent(&event2);
+    Micro = micros();
+    logfile.print(Micro); 
+    logfile.print(",");
+    logfile.print(event.acceleration.x,4);
+    logfile.print(",");
+    logfile.print(event.acceleration.y,4);
+    logfile.print(",");
+    logfile.print(event.acceleration.z,4);
+    logfile.print(",");
+    logfile.print(event2.acceleration.x,4);
+    logfile.print(",");
+    logfile.print(event2.acceleration.y,4);
+    logfile.print(",");
+    logfile.print(event2.acceleration.z,4);
+    logfile.println();
     count++; 
-    Serial.print(Micro); 
-    Serial.print("\t");
-    Serial.print(event.acceleration.z,5); 
-    Serial.print("\t");
-    Serial.println(count); 
+    if (count == 5000){
+      logfile.close();
+      //Serial.print("shut the door");
+      count = 0; 
     }
-    
+   }
   }
   vTaskDelete( NULL );
 } 
-
-// Timer ISR 
-/*void IRAM_ATTR onTimer() {
-  portENTER_CRITICAL_ISR(&timerMux);
-  interruptCounter++;
-  DataLogger();
-  portEXIT_CRITICAL_ISR(&timerMux);
-}*/
 
 void IRAM_ATTR vTimerISR()
   {
@@ -96,22 +95,15 @@ void IRAM_ATTR vTimerISR()
   //xHigherPriorityTaskWoken = pdFALSE;  
   }
 
-    /* If xHigherPriorityTaskWoken was set to true you
-    we should yield.  The actual macro used here is
-    port specific. */
-    //portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
-//}  
-
 //------------------------------------------------------------------------------
 // define tasks for Sensor Data and SD Write
-//void vTimerISR( void *pvParameters ); //Task that executes at interrupt
 void TaskGetData( void *pvParameters ); //Always runs, executes on semaphore recieve 
  
 void setup() {
  
   Serial.begin(115200);
 
-        if (! lis.begin(0x18)) {   // Sensor 1, change this to 0x19 for alternative i2c address
+  if (! lis.begin(0x18)) {   // Sensor 1, change this to 0x19 for alternative i2c address
     Serial.println("Couldnt start Sensor 1");
     while (1) yield();
   }
@@ -135,8 +127,6 @@ void setup() {
   Serial.print("/");
   Serial.print(2 << lis2.getRange());  
   Serial.println("G");
-
-  //SD_CHIP_SELECT, SD_SCK_MHZ(15)
 
 // see if the card is present and can be initialized:  (Use highest SD clock possible, but lower if has error, 15 Mhz works, possible to go to to 50 Mhz if sample rate is low enough
   if (!SD.begin(cardSelect, SD_SCK_MHZ(15))) {
@@ -189,24 +179,21 @@ void setup() {
   // Create semaphore to inform us when the timer has fired
   timerSemaphore = xSemaphoreCreateBinary();
 
-
  // Setup up Tasks and where to run ============================================================  
-  // Now set up tasks to run independently.
-  //xTaskCreate(vTimerISR, "ISR", 1024, NULL, 1, NULL);   // Task function
- 
+ // Now set up tasks to run independently.
   xTaskCreatePinnedToCore(
     TaskGetData
     ,  "Get Data from Accel to Queue"   // A name just for humans
     ,  10000 // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
-    ,  1  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  3 // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
-    ,  TaskCore0);
+    ,  TaskCore1);
 
     // Create Timer ===============================================================================
   timer = timerBegin(1, 80, true);
   timerAttachInterrupt(timer, &vTimerISR, true);
-  timerAlarmWrite(timer, 1000000, true);
+  timerAlarmWrite(timer, 1000, true);
   timerAlarmEnable(timer); 
 }
  
