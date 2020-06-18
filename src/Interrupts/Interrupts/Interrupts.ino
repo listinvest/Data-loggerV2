@@ -41,7 +41,7 @@ void setup() {
               "Led", // Task name
               2048, // Stack size 
               NULL, 
-              0, // Priority
+              5, // Priority
               NULL );
 
   /**
@@ -85,9 +85,13 @@ void TaskLed(void *pvParameters)
      * Take the semaphore.
      * https://www.freertos.org/a00122.html
      */
+     Serial.println("what is happening?"); 
     if (xSemaphoreTake(interruptSemaphore, portMAX_DELAY) == pdPASS) {
       digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+      Serial.println("light it up");
     }
-    
+    else {
+      Serial.println("nothing");
+    }
   }
 }

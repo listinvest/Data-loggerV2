@@ -45,7 +45,7 @@ struct Data_t {
   float value2X;
   float value2Y;
   float value2Z;
-} TX_Data_t[10], RX_Data_t[10];
+} TX_Data_t, RX_Data_t;
 
 //------------------------------------------------------------------------------
 // Accel Lis3dh definitions, SPI or I2C
@@ -81,7 +81,7 @@ void TaskSDWrite( void *pvParameters );
 hw_timer_t * timer = NULL;  //create timer handler
 
 //Declare Queue data type for FreeRTOS
-QueueHandle_t DataQueue = NULL;
+QueueHandle_t DataQueue; // = NULL;
 
 //ISR tools
 //Create Interrupt Semaphore
@@ -89,8 +89,8 @@ int count = 0;
 SemaphoreHandle_t timerSemaphore; 
 SemaphoreHandle_t interruptSemaphore;
 
-void *ptrtostruct;
-void *ptr;
+//void *ptrtostruct;
+//void *ptr;
 
 /////////////////////////////////////////////////////////////////////////////////////
 void IRAM_ATTR vTimerISR()  //Timer ISR 
@@ -116,23 +116,19 @@ void TaskSDClose( TimerHandle_t timer3 )  // This is log files and close
 ////////////////////////////////////////////////////////////////////////////////////////////
 void TaskGetData(void *pvParameters)  // This is a task.
 {
-  (void) pvParameters;
-  int D = 0;
-  struct Data_t *pSendData;  //Create pointer to the struct
+  //(void) pvParameters;
+  //TX_Data_t *pTX_Data_t;  //Create pointer to the struct
 
   for (;;) // A Task shall never return or exit.
   {
     if (xSemaphoreTake(timerSemaphore, 10) == pdTRUE){
-      /*if(xQueueSend( DataQueue, (void *) &pSendData, 2000 ) != pdPASS )  //portMAX_DELAY
-      {
-        Serial.println("xQueueSend is not working"); 
-      }*/
+
     sensors_event_t event;
     lis.getEvent(&event);
     sensors_event_t event2;
     lis2.getEvent(&event2);
     Serial.print("Start logging data cheese head"); 
-    pSendData->usec = micros();
+    /*pSendData->usec = micros();
     pSendData->value1X = event.acceleration.x;
     pSendData->value1Y = event.acceleration.y;
     pSendData->value1Z = event.acceleration.z;
@@ -151,8 +147,32 @@ void TaskGetData(void *pvParameters)  // This is a task.
     Serial.print(',');
     Serial.print(pSendData->value2Y,5);
     Serial.print(',');
-    Serial.print(pSendData->value2Z,5);
+    Serial.print(pSendData->value2Z,5);*/
+    TX_Data_t.usec = micros();
+    TX_Data_t.value1X = event.acceleration.x;
+    TX_Data_t.value1Y = event.acceleration.y;
+    TX_Data_t.value1Z = event.acceleration.z;
+    TX_Data_t.value2X = event2.acceleration.x;
+    TX_Data_t.value2Y = event2.acceleration.y;
+    TX_Data_t.value2Z = event2.acceleration.z;
+    Serial.print(TX_Data_t.usec); 
+    Serial.print(',');
+    Serial.print(TX_Data_t.value1X,5);
+    Serial.print(',');
+    Serial.print(TX_Data_t.value1Y,5);
+    Serial.print(',');
+    Serial.print(TX_Data_t.value1Z,5);
+    Serial.print(',');
+    Serial.print(TX_Data_t.value2X,5);
+    Serial.print(',');
+    Serial.print(TX_Data_t.value2Y,5);
+    Serial.print(',');
+    Serial.print(TX_Data_t.value2Z,5);
     Serial.println();
+    if(xQueueSend( DataQueue, ( void * ) &TX_Data_t, 200 ) != pdPASS )  //portMAX_DELAY
+      {
+        Serial.println("xQueueSend is not working"); 
+      }
     }
         
 
@@ -162,35 +182,62 @@ void TaskGetData(void *pvParameters)  // This is a task.
 //------------------------------------------------------------------------------
 void TaskSDWrite(void *pvParameters)  // This is a task.
 {
-  (void) pvParameters;
+  //(void) pvParameters;
   
-  struct Data_t *RCV_Data; 
+  //struct Data_t *RCV_Data; 
   
   for (;;)
   {
 
-    if(DataQueue != NULL ) 
-    {
-      if( xQueueReceive( DataQueue, &RCV_Data, portMAX_DELAY ) != pdPASS )   //portMAX_DELAY
+    //if(DataQueue != NULL ) 
+    //{
+      if( xQueueReceive( DataQueue, &( RX_Data_t ), portMAX_DELAY ) != pdPASS )   //portMAX_DELAY
       {
         Serial.println("xQueueRecieve is not working");
       }
-        ptr = pvPortMalloc(sizeof ( Data_t));
-        
-        logfile.print(RCV_Data->usec);
-        logfile.print(',');
-        logfile.print(RCV_Data->value1X,4);
-        logfile.print(',');
-        logfile.print(RCV_Data->value1Y,4);
-        logfile.print(',');
-        logfile.print(RCV_Data->value1Z,4);
-        logfile.print(',');
-        logfile.print(RCV_Data->value2X,4);
-        logfile.print(',');
-        logfile.print(RCV_Data->value2Y,4);
-        logfile.print(',');
-        logfile.print(RCV_Data->value2Z,4);
-        logfile.println(); 
+        //ptr = pvPortMalloc(sizeof ( Data_t));
+      logfile.print(RX_Data_t.usec);
+      logfile.print(',');
+      logfile.print(RX_Data_t.value1X,4);
+      logfile.print(',');
+      logfile.print(RX_Data_t.value1Y,4);
+      logfile.print(',');
+      logfile.print(RX_Data_t.value1Z,4);
+      logfile.print(',');
+      logfile.print(RX_Data_t.value2X,4);
+      logfile.print(',');
+      logfile.print(RX_Data_t.value2Y,4);
+      logfile.print(',');
+      logfile.print(RX_Data_t.value2Z,4);
+      logfile.println(); 
+      Serial.print(RX_Data_t.usec); 
+      Serial.print(',');
+      Serial.print(RX_Data_t.value1X,5);
+      Serial.print(',');
+      Serial.print(RX_Data_t.value1Y,5);
+      Serial.print(',');
+      Serial.print(RX_Data_t.value1Z,5);
+      Serial.print(',');
+      Serial.print(RX_Data_t.value2X,5);
+      Serial.print(',');
+      Serial.print(RX_Data_t.value2Y,5);
+      Serial.print(',');
+      Serial.print(RX_Data_t.value2Z,5);
+      Serial.println(); 
+      /*logfile.print(RCV_Data->usec);
+      logfile.print(',');
+      logfile.print(RCV_Data->value1X,4);
+      logfile.print(',');
+      logfile.print(RCV_Data->value1Y,4);
+      logfile.print(',');
+      logfile.print(RCV_Data->value1Z,4);
+      logfile.print(',');
+      logfile.print(RCV_Data->value2X,4);
+      logfile.print(',');
+      logfile.print(RCV_Data->value2Y,4);
+      logfile.print(',');
+      logfile.print(RCV_Data->value2Z,4);
+      logfile.println(); 
         /*Serial.print(RCV_Data->usec); 
         Serial.print(',');
         Serial.print(RCV_Data->value1X,5);
@@ -208,7 +255,7 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
  
         uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
         Serial.println(FreeSpace);
-      }
+      //}
    }
    vTaskDelete( NULL ); 
 }

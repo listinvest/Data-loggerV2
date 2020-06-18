@@ -69,11 +69,11 @@ void TaskGetData(void *pvParameters)  // This is a task.
     logfile.print(",");
     logfile.print(event2.acceleration.z,4);
     logfile.println();
-    count++; 
-    if (count == 5000){
-      logfile.close();
+    //count++; 
+    //if (count == 5000){
+      //logfile.close();
       //Serial.print("shut the door");
-      count = 0; 
+      //count = 0; 
     }
    }
   }
@@ -190,7 +190,9 @@ void setup() {
   timer = timerBegin(1, 80, true);
   timerAttachInterrupt(timer, &vTimerISR, true);
   timerAlarmWrite(timer, 1000, true);
-  timerAlarmEnable(timer); 
+  timerAlarmEnable(timer);
+
+   
 }
  
 void loop() {
