@@ -9,7 +9,7 @@
 //Use ESP32 duo core
 const int TaskCore1  = 1;
 const int TaskCore0 = 0;
-const int SampleRate = 1000; //Hz, Set sample rate here
+const int SampleRate = 10000; //Hz, Set sample rate here
 
 //Libraries
 #include <Wire.h>
@@ -92,24 +92,11 @@ void IRAM_ATTR vTimerISR()  //Timer ISR
   {
   xSemaphoreGiveFromISR(timerSemaphore, NULL);
   }
-/////////////////////////////////////////////////////////////////////////////////////  
-/*void TaskSDFlush( TimerHandle_t timer2 )  // This is SD flush task for insurance
-  {
-  logfile.flush(); 
-  //Serial.print("The Flush is IN");
-  }*/
-/////////////////////////////////////////////////////////////////////////////////////
-/*void TaskSDClose( TimerHandle_t timer3 )  // This is log files and close
-  {
-  logfile.close(); 
-  //Serial.print("File = Done");
-  }*/
 
-////////////////////////////////////////////////////////////////////////////////////////////
+//------------------------------------------------------------------------------
 void TaskGetData(void *pvParameters)  // This is a task.
 {
   //(void) pvParameters;
-  //TX_Data_t *pTX_Data_t;  //Create pointer to the struct
 
   for (;;) // A Task shall never return or exit.
   {
@@ -124,20 +111,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
     pSendData->value1Z = event.acceleration.z;
     pSendData->value2X = event2.acceleration.x;
     pSendData->value2Y = event2.acceleration.y;
-    pSendData->value2Z = event2.acceleration.z;
-    Serial.print(pSendData->usec); 
-    Serial.print(',');
-    Serial.print(pSendData->value1X,5);
-    Serial.print(',');
-    Serial.print(pSendData->value1Y,5);
-    Serial.print(',');
-    Serial.print(pSendData->value1Z,5);
-    Serial.print(',');
-    Serial.print(pSendData->value2X,5);
-    Serial.print(',');
-    Serial.print(pSendData->value2Y,5);
-    Serial.print(',');
-    Serial.print(pSendData->value2Z,5);*/
+    pSendData->value2Z = event2.acceleration.z;*/
     TX_Data_t.usec = micros();
     TX_Data_t.value1X = event.acceleration.x;
     TX_Data_t.value1Y = event.acceleration.y;
@@ -145,7 +119,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
     TX_Data_t.value2X = event2.acceleration.x;
     TX_Data_t.value2Y = event2.acceleration.y;
     TX_Data_t.value2Z = event2.acceleration.z;
-    /*Serial.print(TX_Data_t.usec); 
+    Serial.print(TX_Data_t.usec); 
     Serial.print(',');
     Serial.print(TX_Data_t.value1X,5);
     Serial.print(',');
@@ -158,7 +132,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
     Serial.print(TX_Data_t.value2Y,5);
     Serial.print(',');
     Serial.print(TX_Data_t.value2Z,5);
-    Serial.println();*/
+    Serial.println();
     if(xQueueSend( DataQueue, ( void * ) &TX_Data_t, 200 ) != pdPASS )  //portMAX_DELAY
       {
         Serial.println("xQueueSend is not working"); 
@@ -177,8 +151,6 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
   for (;;)
   {
 
-    //if(DataQueue != NULL ) 
-    //{
       if( xQueueReceive( DataQueue, &( RX_Data_t ), portMAX_DELAY ) != pdPASS )   //portMAX_DELAY
       {
         Serial.println("xQueueRecieve is not working");
@@ -224,22 +196,8 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       logfile.print(RCV_Data->value2Y,4);
       logfile.print(',');
       logfile.print(RCV_Data->value2Z,4);
-      logfile.println(); 
-        /*Serial.print(RCV_Data->usec); 
-        Serial.print(',');
-        Serial.print(RCV_Data->value1X,5);
-        Serial.print(',');
-        Serial.print(RCV_Data->value1Y,5);
-        Serial.print(',');
-        Serial.print(RCV_Data->value1Z,5);
-        Serial.print(',');
-        Serial.print(RCV_Data->value2X,5);
-        Serial.print(',');
-        Serial.print(RCV_Data->value2Y,5);
-        Serial.print(',');
-        Serial.print(RCV_Data->value2Z,5);
-        Serial.println(); */
- 
+      logfile.println();*/ 
+
         uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
         Serial.println(FreeSpace);
       //}
@@ -258,7 +216,6 @@ void TaskSDFlush(void *pvParameters)  // This is a task.
     vTaskDelay( 5000 );
     logfile.flush();
     //Serial.println("Flushed file"); 
-    
   }
   vTaskDelete ( NULL ); 
 }
@@ -273,7 +230,6 @@ void TaskSDClose(void *pvParameters)  // This is a task.
     vTaskDelay( 6000 );
     logfile.close();
     //Serial.println("Close file"); 
-    
   }
   vTaskDelete ( NULL ); 
 }
