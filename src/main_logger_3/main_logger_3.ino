@@ -80,7 +80,7 @@ QueueHandle_t DataQueue; // = NULL;
 //ISR tools
 //Create Interrupt Semaphore
 SemaphoreHandle_t timerSemaphore; 
-SemaphoreHandle_t interruptSemaphore;
+SemaphoreHandle_t ButtonSemaphore;
 
 /////////////////////////////////////////////////////////////////////////////////////
 void IRAM_ATTR vTimerISR()  //Timer ISR 
@@ -88,9 +88,9 @@ void IRAM_ATTR vTimerISR()  //Timer ISR
   xSemaphoreGiveFromISR(timerSemaphore, NULL);
   }
 //------------------------------------------------------------------------------
-void interruptHandler() 
+void IRAM_ATTR ButtonISR() 
   {
-  xSemaphoreGiveFromISR(interruptSemaphore, NULL); //Gives permission from button interrupt
+  xSemaphoreGiveFromISR(ButtonSemaphore, NULL); //Gives permission from button interrupt
   }
 //------------------------------------------------------------------------------
 void TaskGetData(void *pvParameters)  // This is a task.
@@ -218,7 +218,7 @@ void TaskLed(void *pvParameters)
   for (;;) 
     {
     // Take the semaphore.
-    if (xSemaphoreTake(interruptSemaphore, portMAX_DELAY) == pdPASS) {
+    if (xSemaphoreTake(ButtonSemaphore, portMAX_DELAY) == pdPASS) {
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
     //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
     //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
@@ -250,11 +250,14 @@ void setup() {
   pinMode(27, INPUT); //button to turn recording on/off, In [HIGH]
 
   //Create button Interrupt Semaphore
-  interruptSemaphore = xSemaphoreCreateBinary();
-  if (interruptSemaphore != NULL) {
+  ButtonSemaphore = xSemaphoreCreateBinary();
+  if (ButtonSemaphore != NULL) {
     // Attach interrupt for Arduino digital pin
-    attachInterrupt(digitalPinToInterrupt(27), interruptHandler, FALLING);
+    attachInterrupt(digitalPinToInterrupt(27), ButtonISR, FALLING);
   }
+
+  // Create semaphore to inform us when the timer has fired
+  timerSemaphore = xSemaphoreCreateBinary();
   
   //ACCEL Setup and RUN
   if (! lis.begin(0x18)) {   // change this to 0x19 for alternative i2c address
@@ -322,9 +325,6 @@ void setup() {
   logfile.print("Sensor 2 Z");
   logfile.println();
 
-  // Create semaphore to inform us when the timer has fired
-  timerSemaphore = xSemaphoreCreateBinary();
-   
   // Setup up Tasks and where to run ============================================================  
   // Now set up tasks to run independently.
   xTaskCreatePinnedToCore(
@@ -332,7 +332,7 @@ void setup() {
     ,  "Get Data from Accel to Queue"   // A name just for humans
     ,  10000 // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
-    ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  4  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
     ,  TaskCore1);
 
@@ -341,7 +341,7 @@ void setup() {
     ,  "Get Data from Queue"
     ,  10000 // Stack size
     ,  NULL
-    ,  3 // Priority
+    ,  5 // Priority
     ,  NULL 
     ,  TaskCore0);
 
@@ -350,9 +350,9 @@ void setup() {
     ,  "Write Data to Card"
     ,  2000 // Stack size
     ,  NULL
-    ,  2  // Priority
+    ,  3  // Priority
     ,  NULL 
-    ,  TaskCore0);
+    ,  TaskCore1);
 
   xTaskCreatePinnedToCore(
     TaskSDClose
@@ -384,27 +384,6 @@ void setup() {
   timerAlarmWrite(timer, SampleRate, true);
   // Start an alarm
   timerAlarmEnable(timer);
-
-  //=============================================================================================================
-  // Create software timers
-  /*TimerHandle_t timer2 = xTimerCreate("flush timer", pdMS_TO_TICKS(5000), pdTRUE, 0, TaskSDFlush);
-  TimerHandle_t timer3 = xTimerCreate("close file timer", pdMS_TO_TICKS(8000), pdTRUE, 0, TaskSDClose);
-  if (timer2 == NULL) {
-    Serial.println("Timer 2 can not be created");
-  } else {
-    // Start timer
-    if (xTimerStart(timer2, 0) == pdPASS) { // Start the scheduler
-      Serial.println("Timer 2 working");
-    }
-  }
-    if (timer3 == NULL) {
-    Serial.println("Timer 3 can not be created");
-  } else {
-    // Start timer
-    if (xTimerStart(timer3, 0) == pdPASS) { // Start the scheduler
-      Serial.println("Timer 3 working");
-    }
-  }*/
 }
   
 //================================================================================================================================
