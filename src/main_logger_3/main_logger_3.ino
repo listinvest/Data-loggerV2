@@ -108,13 +108,6 @@ void TaskGetData(void *pvParameters)  // This is a task.
     lis.getEvent(&event);
     sensors_event_t event2;
     lis2.getEvent(&event2);
-    /*pSendData->usec = micros();
-    pSendData->value1X = event.acceleration.x;
-    pSendData->value1Y = event.acceleration.y;
-    pSendData->value1Z = event.acceleration.z;
-    pSendData->value2X = event2.acceleration.x;
-    pSendData->value2Y = event2.acceleration.y;
-    pSendData->value2Z = event2.acceleration.z;*/
     TX_Data_t.usec = micros();
     TX_Data_t.value1X = event.acceleration.x;
     TX_Data_t.value1Y = event.acceleration.y;
@@ -122,7 +115,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
     TX_Data_t.value2X = event2.acceleration.x;
     TX_Data_t.value2Y = event2.acceleration.y;
     TX_Data_t.value2Z = event2.acceleration.z;
-    /*Serial.print(TX_Data_t.usec); 
+    Serial.print(TX_Data_t.usec); 
     Serial.print(',');
     Serial.print(TX_Data_t.value1X,5);
     Serial.print(',');
@@ -135,7 +128,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
     Serial.print(TX_Data_t.value2Y,5);
     Serial.print(',');
     Serial.print(TX_Data_t.value2Z,5);
-    Serial.println();*/
+    Serial.println();
     if(xQueueSend( DataQueue, ( void * ) &TX_Data_t, 200 ) != pdPASS )  //portMAX_DELAY
       {
         Serial.println("xQueueSend is not working"); 
@@ -268,7 +261,7 @@ void setup() {
   Serial.begin(115200);
 
   //Queue Setup
-  DataQueue = xQueueCreate(100, sizeof( Data_t ));
+  DataQueue = xQueueCreate(10, sizeof( Data_t ));
   if(DataQueue == NULL){
      Serial.println("Error Creating the Queue");
    }
@@ -379,7 +372,7 @@ void setup() {
   xTaskCreatePinnedToCore(
     TaskSDFlush
     ,  "Write Data to Card"
-    ,  10000 // Stack size
+    ,  2000 // Stack size
     ,  NULL
     ,  2  // Priority
     ,  NULL 
@@ -388,19 +381,21 @@ void setup() {
   xTaskCreatePinnedToCore(
     TaskSDClose
     ,  "Close the File"
-    ,  10000 // Stack size
+    ,  2000 // Stack size
     ,  NULL
-    ,  2  // Priority
+    ,  3  // Priority
     ,  NULL 
     ,  TaskCore0);  
 
-  xTaskCreate(TaskLed, // Task function
-              "Led", // Task name
-              2048, // Stack size 
-              NULL, 
-              1, // Priority
-              NULL );     
-
+    xTaskCreatePinnedToCore(
+    TaskLed
+    ,  "LED"
+    ,  2000 // Stack size
+    ,  NULL
+    ,  3  // Priority
+    ,  NULL 
+    ,  TaskCore0);  
+  
 // Create Timer ===============================================================================
   // Use 1st timer of 4 (counted from zero).
   // Set 80 divider for prescaler (see ESP32 Technical Reference Manual for more
