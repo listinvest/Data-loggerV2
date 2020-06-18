@@ -1,14 +1,15 @@
-// Data logger:  For measuring acceleration from LIS3DH
+// Data logger:  For measuring acceleration from LIS3DH/s
 // Hardware:  Adafruit ESP32, Adalogger feather+RTC, 2x LIS3DH accels
 // Created:  May 12 2020
 // Updated:
-// Uses SPI for SD, I2C for Accels, hoping for 1000 Hz. sampling 
+// Uses SPI for SD & Accels, hoping for 1000 Hz. sampling 
 // files are saves text files, csv = NNNNNNNN.TXT
 // See ReadME and photos for additional hook up info
 
 //Use ESP32 duo core
 const int TaskCore1  = 1;
 const int TaskCore0 = 0;
+const int SampleRate = 1000; //Hz, Set sample rate here
 
 //Libraries
 #include <Wire.h>
@@ -18,7 +19,6 @@ const int TaskCore0 = 0;
 #include <Adafruit_Sensor.h>
 #include "stdio.h"
 #include "esp_system.h" //This inclusion configures the peripherals in the ESP system.
-//#include "freertos/Arduino_FreeRTOS.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
@@ -34,8 +34,6 @@ SdFat sd;
 SdFile file;
 File logfile;
 //------------------------------------------------------------------------------
-// Queue definitions
-
 // data type for Queue item
 struct Data_t {
   uint32_t usec; 
@@ -73,8 +71,8 @@ Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH_CS2);
 void TaskLed( void *pvParamaters );
 void TaskGetData( void *pvParameters );
 void TaskSDWrite( void *pvParameters );
-//void TaskSDFlush( void *pvParameters );
-//void TaskSDClose( void *pvParameters );
+void TaskSDFlush( void *pvParameters );
+void TaskSDClose( void *pvParameters );
 //------------------------------------------------------------------------------
 
 //Hardware Timer
@@ -89,29 +87,23 @@ int count = 0;
 SemaphoreHandle_t timerSemaphore; 
 SemaphoreHandle_t interruptSemaphore;
 
-//void *ptrtostruct;
-//void *ptr;
-
 /////////////////////////////////////////////////////////////////////////////////////
 void IRAM_ATTR vTimerISR()  //Timer ISR 
   {
-  // Increment the counter and set the time of ISR
-  //portENTER_CRITICAL_ISR(&timerMux);
   xSemaphoreGiveFromISR(timerSemaphore, NULL);
-  //portEXIT_CRITICAL_ISR(&timerMux);
   }
 /////////////////////////////////////////////////////////////////////////////////////  
-void TaskSDFlush( TimerHandle_t timer2 )  // This is SD flush task for insurance
+/*void TaskSDFlush( TimerHandle_t timer2 )  // This is SD flush task for insurance
   {
   logfile.flush(); 
-  Serial.print("The Flush is IN");
-  }
+  //Serial.print("The Flush is IN");
+  }*/
 /////////////////////////////////////////////////////////////////////////////////////
-void TaskSDClose( TimerHandle_t timer3 )  // This is log files and close
+/*void TaskSDClose( TimerHandle_t timer3 )  // This is log files and close
   {
   logfile.close(); 
-  Serial.print("File = Done");
-  }
+  //Serial.print("File = Done");
+  }*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 void TaskGetData(void *pvParameters)  // This is a task.
@@ -122,12 +114,10 @@ void TaskGetData(void *pvParameters)  // This is a task.
   for (;;) // A Task shall never return or exit.
   {
     if (xSemaphoreTake(timerSemaphore, 10) == pdTRUE){
-
     sensors_event_t event;
     lis.getEvent(&event);
     sensors_event_t event2;
     lis2.getEvent(&event2);
-    Serial.print("Start logging data cheese head"); 
     /*pSendData->usec = micros();
     pSendData->value1X = event.acceleration.x;
     pSendData->value1Y = event.acceleration.y;
@@ -155,7 +145,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
     TX_Data_t.value2X = event2.acceleration.x;
     TX_Data_t.value2Y = event2.acceleration.y;
     TX_Data_t.value2Z = event2.acceleration.z;
-    Serial.print(TX_Data_t.usec); 
+    /*Serial.print(TX_Data_t.usec); 
     Serial.print(',');
     Serial.print(TX_Data_t.value1X,5);
     Serial.print(',');
@@ -168,16 +158,14 @@ void TaskGetData(void *pvParameters)  // This is a task.
     Serial.print(TX_Data_t.value2Y,5);
     Serial.print(',');
     Serial.print(TX_Data_t.value2Z,5);
-    Serial.println();
+    Serial.println();*/
     if(xQueueSend( DataQueue, ( void * ) &TX_Data_t, 200 ) != pdPASS )  //portMAX_DELAY
       {
         Serial.println("xQueueSend is not working"); 
       }
     }
-        
-
-    }
-    vTaskDelete( NULL );
+  }
+  vTaskDelete( NULL );
 }
 //------------------------------------------------------------------------------
 void TaskSDWrite(void *pvParameters)  // This is a task.
@@ -195,7 +183,6 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       {
         Serial.println("xQueueRecieve is not working");
       }
-        //ptr = pvPortMalloc(sizeof ( Data_t));
       logfile.print(RX_Data_t.usec);
       logfile.print(',');
       logfile.print(RX_Data_t.value1X,4);
@@ -210,7 +197,7 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       logfile.print(',');
       logfile.print(RX_Data_t.value2Z,4);
       logfile.println(); 
-      Serial.print(RX_Data_t.usec); 
+      /*Serial.print(RX_Data_t.usec); 
       Serial.print(',');
       Serial.print(RX_Data_t.value1X,5);
       Serial.print(',');
@@ -223,7 +210,7 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       Serial.print(RX_Data_t.value2Y,5);
       Serial.print(',');
       Serial.print(RX_Data_t.value2Z,5);
-      Serial.println(); 
+      Serial.println();*/ 
       /*logfile.print(RCV_Data->usec);
       logfile.print(',');
       logfile.print(RCV_Data->value1X,4);
@@ -262,12 +249,13 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
 
 
 //------------------------------------------------------------------------------
-/*void TaskSDFlush(void *pvParameters)  // This is a task.
+void TaskSDFlush(void *pvParameters)  // This is a task.
 {
   (void) pvParameters;
 
   for (;;)
   {
+    vTaskDelay( 5000 );
     logfile.flush();
     //Serial.println("Flushed file"); 
     
@@ -282,14 +270,14 @@ void TaskSDClose(void *pvParameters)  // This is a task.
 
   for (;;)
   {
-    //vTaskDelay( 5000 );
+    vTaskDelay( 6000 );
     logfile.close();
     //Serial.println("Close file"); 
     
   }
   vTaskDelete ( NULL ); 
-}*/
-
+}
+//------------------------------------------------------------------------------
 void interruptHandler() 
   {
   xSemaphoreGiveFromISR(interruptSemaphore, NULL); //Gives permission from button interrupt
@@ -314,11 +302,8 @@ void TaskLed(void *pvParameters)
     //vTaskDelay(intervalTicks);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
       
     }
-    
-  }
+   }
 }
-
-
 //===================================================================================================================
 //===================================================================================================================
 // the setup function runs once when you press reset or power the board
@@ -425,7 +410,7 @@ void setup() {
     ,  NULL
     ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
-    ,  TaskCore0);
+    ,  TaskCore1);
 
   xTaskCreatePinnedToCore(
     TaskSDWrite
@@ -436,23 +421,23 @@ void setup() {
     ,  NULL 
     ,  TaskCore0);
 
-  /*xTaskCreatePinnedToCore(
+  xTaskCreatePinnedToCore(
     TaskSDFlush
     ,  "Write Data to Card"
     ,  10000 // Stack size
     ,  NULL
-    ,  3  // Priority
+    ,  2  // Priority
     ,  NULL 
-    ,  TaskCore1);*/
+    ,  TaskCore0);
 
-  /*xTaskCreatePinnedToCore(
+  xTaskCreatePinnedToCore(
     TaskSDClose
     ,  "Close the File"
     ,  10000 // Stack size
     ,  NULL
-    ,  3  // Priority
+    ,  2  // Priority
     ,  NULL 
-    ,  TaskCore1);*/   
+    ,  TaskCore0);  
 
   xTaskCreate(TaskLed, // Task function
               "Led", // Task name
@@ -470,7 +455,7 @@ void setup() {
   timerAttachInterrupt(timer, &vTimerISR, true);
   // Set alarm to call onTimer function every second (value in microseconds).
   // Repeat the alarm (third parameter)
-  timerAlarmWrite(timer, 1000000, true);
+  timerAlarmWrite(timer, SampleRate, true);
   // Start an alarm
   timerAlarmEnable(timer);
 
@@ -494,8 +479,6 @@ void setup() {
       Serial.println("Timer 3 working");
     }
   }
-
-  
 }
   
 //================================================================================================================================
