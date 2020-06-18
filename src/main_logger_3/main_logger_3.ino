@@ -83,7 +83,6 @@ QueueHandle_t DataQueue; // = NULL;
 
 //ISR tools
 //Create Interrupt Semaphore
-int count = 0;
 SemaphoreHandle_t timerSemaphore; 
 SemaphoreHandle_t interruptSemaphore;
 
@@ -92,7 +91,11 @@ void IRAM_ATTR vTimerISR()  //Timer ISR
   {
   xSemaphoreGiveFromISR(timerSemaphore, NULL);
   }
-
+//------------------------------------------------------------------------------
+void interruptHandler() 
+  {
+  xSemaphoreGiveFromISR(interruptSemaphore, NULL); //Gives permission from button interrupt
+  }
 //------------------------------------------------------------------------------
 void TaskGetData(void *pvParameters)  // This is a task.
 {
@@ -119,7 +122,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
     TX_Data_t.value2X = event2.acceleration.x;
     TX_Data_t.value2Y = event2.acceleration.y;
     TX_Data_t.value2Z = event2.acceleration.z;
-    Serial.print(TX_Data_t.usec); 
+    /*Serial.print(TX_Data_t.usec); 
     Serial.print(',');
     Serial.print(TX_Data_t.value1X,5);
     Serial.print(',');
@@ -132,7 +135,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
     Serial.print(TX_Data_t.value2Y,5);
     Serial.print(',');
     Serial.print(TX_Data_t.value2Z,5);
-    Serial.println();
+    Serial.println();*/
     if(xQueueSend( DataQueue, ( void * ) &TX_Data_t, 200 ) != pdPASS )  //portMAX_DELAY
       {
         Serial.println("xQueueSend is not working"); 
@@ -229,15 +232,11 @@ void TaskSDClose(void *pvParameters)  // This is a task.
   {
     vTaskDelay( 6000 );
     logfile.close();
-    //Serial.println("Close file"); 
+    Serial.println("Close file"); 
   }
   vTaskDelete ( NULL ); 
 }
 //------------------------------------------------------------------------------
-void interruptHandler() 
-  {
-  xSemaphoreGiveFromISR(interruptSemaphore, NULL); //Gives permission from button interrupt
-  }
 
 void TaskLed(void *pvParameters)
 {
@@ -417,7 +416,7 @@ void setup() {
 
   //=============================================================================================================
   // Create software timers
-  TimerHandle_t timer2 = xTimerCreate("flush timer", pdMS_TO_TICKS(5000), pdTRUE, 0, TaskSDFlush);
+  /*TimerHandle_t timer2 = xTimerCreate("flush timer", pdMS_TO_TICKS(5000), pdTRUE, 0, TaskSDFlush);
   TimerHandle_t timer3 = xTimerCreate("close file timer", pdMS_TO_TICKS(8000), pdTRUE, 0, TaskSDClose);
   if (timer2 == NULL) {
     Serial.println("Timer 2 can not be created");
@@ -434,7 +433,7 @@ void setup() {
     if (xTimerStart(timer3, 0) == pdPASS) { // Start the scheduler
       Serial.println("Timer 3 working");
     }
-  }
+  }*/
 }
   
 //================================================================================================================================
