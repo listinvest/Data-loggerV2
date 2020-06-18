@@ -12,7 +12,7 @@ const int TaskCore0 = 0;
 const int SampleRate = 10000; //Hz, Set sample rate here
 
 //Libraries
-#include <Wire.h>
+//#include <Wire.h>
 #include <SPI.h>
 #include "SdFat.h"
 #include <Adafruit_LIS3DH.h>
@@ -24,7 +24,6 @@ const int SampleRate = 10000; //Hz, Set sample rate here
 #include "freertos/timers.h"
 #include "freertos/event_groups.h"
 #include "freertos/queue.h"
-//#include "freertos/stream_buffer.h"
 
 #define LED_BUILTIN LED_BUILTIN //LED light for notification
 //------------------------------------------------------------------------------
@@ -63,9 +62,6 @@ Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS);
 // Sensor 2 Hardware SPI
 Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH_CS2);
 
-// Sensor I2C 
-//Adafruit_LIS3DH lis = Adafruit_LIS3DH();
-
 //------------------------------------------------------------------------------
 // define tasks for Sensor Data and SD Write
 void TaskLed( void *pvParamaters );
@@ -99,7 +95,7 @@ void interruptHandler()
 //------------------------------------------------------------------------------
 void TaskGetData(void *pvParameters)  // This is a task.
 {
-  //(void) pvParameters;
+  (void) pvParameters;
 
   for (;;) // A Task shall never return or exit.
   {
@@ -115,7 +111,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
     TX_Data_t.value2X = event2.acceleration.x;
     TX_Data_t.value2Y = event2.acceleration.y;
     TX_Data_t.value2Z = event2.acceleration.z;
-    Serial.print(TX_Data_t.usec); 
+    /*Serial.print(TX_Data_t.usec); 
     Serial.print(',');
     Serial.print(TX_Data_t.value1X,5);
     Serial.print(',');
@@ -128,7 +124,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
     Serial.print(TX_Data_t.value2Y,5);
     Serial.print(',');
     Serial.print(TX_Data_t.value2Z,5);
-    Serial.println();
+    Serial.println();*/
     if(xQueueSend( DataQueue, ( void * ) &TX_Data_t, 200 ) != pdPASS )  //portMAX_DELAY
       {
         Serial.println("xQueueSend is not working"); 
@@ -140,7 +136,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
 //------------------------------------------------------------------------------
 void TaskSDWrite(void *pvParameters)  // This is a task.
 {
-  //(void) pvParameters;
+  (void) pvParameters;
   
   //struct Data_t *RCV_Data; 
   
@@ -179,28 +175,12 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       Serial.print(',');
       Serial.print(RX_Data_t.value2Z,5);
       Serial.println();*/ 
-      /*logfile.print(RCV_Data->usec);
-      logfile.print(',');
-      logfile.print(RCV_Data->value1X,4);
-      logfile.print(',');
-      logfile.print(RCV_Data->value1Y,4);
-      logfile.print(',');
-      logfile.print(RCV_Data->value1Z,4);
-      logfile.print(',');
-      logfile.print(RCV_Data->value2X,4);
-      logfile.print(',');
-      logfile.print(RCV_Data->value2Y,4);
-      logfile.print(',');
-      logfile.print(RCV_Data->value2Z,4);
-      logfile.println();*/ 
 
-        uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
-        Serial.println(FreeSpace);
-      //}
-   }
+      uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
+      Serial.println(FreeSpace);
+      }
    vTaskDelete( NULL ); 
 }
-
 
 //------------------------------------------------------------------------------
 void TaskSDFlush(void *pvParameters)  // This is a task.
@@ -209,7 +189,7 @@ void TaskSDFlush(void *pvParameters)  // This is a task.
 
   for (;;)
   {
-    vTaskDelay( 5000 );
+    vTaskDelay( pdMS_TO_TICKS(5000) );
     logfile.flush();
     //Serial.println("Flushed file"); 
   }
@@ -223,7 +203,7 @@ void TaskSDClose(void *pvParameters)  // This is a task.
 
   for (;;)
   {
-    vTaskDelay( 6000 );
+    vTaskDelay( pdMS_TO_TICKS(6000) );
     logfile.close();
     Serial.println("Close file"); 
   }
@@ -235,20 +215,16 @@ void TaskLed(void *pvParameters)
 {
   (void) pvParameters;
 
-  pinMode(LED_BUILTIN, OUTPUT);
-
-  for (;;) {
-    
+  for (;;) 
+    {
     // Take the semaphore.
     if (xSemaphoreTake(interruptSemaphore, portMAX_DELAY) == pdPASS) {
-      digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
-        //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
     //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
     //digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
     //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
- 
     //vTaskDelay(intervalTicks);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
-      
     }
    }
 }
@@ -273,7 +249,7 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);  //set Built in LED to show writing on SD Card
   pinMode(27, INPUT); //button to turn recording on/off, In [HIGH]
 
-    //Create button Interrupt Semaphore
+  //Create button Interrupt Semaphore
   interruptSemaphore = xSemaphoreCreateBinary();
   if (interruptSemaphore != NULL) {
     // Attach interrupt for Arduino digital pin
