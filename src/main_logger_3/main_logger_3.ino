@@ -9,7 +9,7 @@
 //Use ESP32 duo core
 const int TaskCore1  = 1;
 const int TaskCore0 = 0;
-const int SampleRate = 1000; //Hz, Set sample rate here
+const int SampleRate = 10000; //Hz, Set sample rate here
 
 //Libraries
 //#include <Wire.h>
@@ -341,7 +341,7 @@ void setup() {
     ,  "Get Data from Queue"
     ,  10000 // Stack size
     ,  NULL
-    ,  4 // Priority
+    ,  3 // Priority
     ,  NULL 
     ,  TaskCore0);
 
