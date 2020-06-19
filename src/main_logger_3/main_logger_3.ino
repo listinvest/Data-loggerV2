@@ -138,6 +138,19 @@ void TaskGetData(void *pvParameters)  // This is a task.
       {
         Serial.println("xQueueSend is not working"); 
       }
+    if( Count == TotalCount){
+        vTaskDelay( pdMS_TO_TICKS( 1000 ));
+        logfile.close();   
+        Serial.println("All done here");     
+        vTaskSuspend( NULL );    
+        //vTaskSuspend( (void *) &TaskSDWrite );
+        //vTaskDelay( pdMS_TO_TICKS( 1000 ));
+
+        //vTaskSuspend( (void *) &TaskGetData );
+        
+        //vTaskDelay( pdMS_TO_TICKS( 10000 ));
+         
+      }  
     }
   }
   vTaskDelete( NULL );
@@ -189,20 +202,6 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
 
       uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
       Serial.println(FreeSpace);
-
-      if( Count == TotalCount){
-        logfile.close(); 
-        //vTaskSuspend( (void *) &TaskGetData );
-        //vTaskDelay( pdMS_TO_TICKS( 1000 ));
-        //vTaskSuspend( (void *) &TaskSDWrite );
-        vTaskSuspendAll();
-        //vTaskDelay( pdMS_TO_TICKS( 1000 ));
-        
-        Serial.println("All done here"); 
-        //vTaskDelay( pdMS_TO_TICKS( 10000 ));
-        
-        
-      }
       }
    vTaskDelete( NULL ); 
 }
