@@ -6,7 +6,7 @@
 // files are saves text files, csv = NNNNNNNN.TXT
 // See ReadME and photos for additional hook up info
 
-const int SampleRate = 10; //Hz, Set sample rate here
+const int SampleRate = 500; //Hz, Set sample rate here
 const int SampleLength = 5; //Seconds, Sample Length in Seconds
 
 //Use ESP32 duo core
