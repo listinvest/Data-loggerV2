@@ -6,10 +6,14 @@
 // files are saves text files, csv = NNNNNNNN.TXT
 // See ReadME and photos for additional hook up info
 
+const int SampleRate = 10; //Hz, Set sample rate here
+const int SampleLength = 5; //Seconds, Sample Length in Seconds
+
 //Use ESP32 duo core
 const int TaskCore1  = 1;
 const int TaskCore0 = 0;
-const int SampleRate = 10000; //Hz, Set sample rate here
+int SampleInt = 1000000 / SampleRate; 
+int TotalCount = SampleLength * SampleRate;
 
 //Libraries
 //#include <Wire.h>
@@ -24,6 +28,8 @@ const int SampleRate = 10000; //Hz, Set sample rate here
 #include "freertos/timers.h"
 #include "freertos/event_groups.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
+//#include <Arduino_FreeRTOS.h>
 
 #define LED_BUILTIN LED_BUILTIN //LED light for notification
 //------------------------------------------------------------------------------
@@ -67,20 +73,23 @@ Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH_CS2);
 void TaskLed( void *pvParamaters );
 void TaskGetData( void *pvParameters );
 void TaskSDWrite( void *pvParameters );
-void TaskSDFlush( void *pvParameters );
-void TaskSDClose( void *pvParameters );
+//void TaskSDFlush( void *pvParameters );
+//void TaskSDClose( void *pvParameters );
 //------------------------------------------------------------------------------
 
 //Hardware Timer
 hw_timer_t * timer = NULL;  //create timer handler
 
 //Declare Queue data type for FreeRTOS
-QueueHandle_t DataQueue; // = NULL;
+QueueHandle_t DataQueue; // 
 
 //ISR tools
 //Create Interrupt Semaphore
 SemaphoreHandle_t timerSemaphore; 
 SemaphoreHandle_t ButtonSemaphore;
+int Count = 0; 
+int G = 0;
+int H = 0; 
 
 /////////////////////////////////////////////////////////////////////////////////////
 void IRAM_ATTR vTimerISR()  //Timer ISR 
@@ -175,9 +184,25 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       Serial.print(',');
       Serial.print(RX_Data_t.value2Z,5);
       Serial.println();*/ 
+      Count++; 
+      //Serial.println(Count); 
 
       uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
       Serial.println(FreeSpace);
+
+      if( Count == TotalCount){
+        logfile.close(); 
+        //vTaskSuspend( (void *) &TaskGetData );
+        //vTaskDelay( pdMS_TO_TICKS( 1000 ));
+        //vTaskSuspend( (void *) &TaskSDWrite );
+        vTaskSuspendAll();
+        //vTaskDelay( pdMS_TO_TICKS( 1000 ));
+        
+        Serial.println("All done here"); 
+        //vTaskDelay( pdMS_TO_TICKS( 10000 ));
+        
+        
+      }
       }
    vTaskDelete( NULL ); 
 }
@@ -189,8 +214,9 @@ void TaskSDFlush(void *pvParameters)  // This is a task.
 
   for (;;)
   {
-    vTaskDelay( pdMS_TO_TICKS(5000) );
-    logfile.flush();
+    G++;
+    //vTaskDelay( pdMS_TO_TICKS(5000) );
+    //logfile.flush();
     //Serial.println("Flushed file"); 
   }
   vTaskDelete ( NULL ); 
@@ -203,9 +229,10 @@ void TaskSDClose(void *pvParameters)  // This is a task.
 
   for (;;)
   {
-    vTaskDelay( pdMS_TO_TICKS(6000) );
-    logfile.close();
-    Serial.println("Close file"); 
+    H++;
+    //vTaskDelay( pdMS_TO_TICKS(6000) );
+    //logfile.close();
+    //Serial.println("Close file"); 
   }
   vTaskDelete ( NULL ); 
 }
@@ -271,6 +298,8 @@ void setup() {
   while (1) yield();
   }
   Serial.println("LIS3DH Sensor 2 found!");
+  Serial.println(SampleInt); //,"Sample time interval");
+  Serial.println(TotalCount); //,"Total # of samples");
   
   // Set accel range  
   lis.setRange(LIS3DH_RANGE_16_G);   // 2, 4, 8 or 16 G!
@@ -345,23 +374,23 @@ void setup() {
     ,  NULL 
     ,  TaskCore0);
 
-  xTaskCreatePinnedToCore(
+  /*xTaskCreatePinnedToCore(
     TaskSDFlush
     ,  "Write Data to Card"
     ,  2000 // Stack size
     ,  NULL
     ,  3  // Priority
     ,  NULL 
-    ,  TaskCore1);
+    ,  TaskCore1);*/
 
-  xTaskCreatePinnedToCore(
+  /*xTaskCreatePinnedToCore(
     TaskSDClose
     ,  "Close the File"
     ,  2000 // Stack size
     ,  NULL
     ,  3  // Priority
     ,  NULL 
-    ,  TaskCore1);  
+    ,  TaskCore1);*/  
 
     xTaskCreatePinnedToCore(
     TaskLed
@@ -381,7 +410,7 @@ void setup() {
   timerAttachInterrupt(timer, &vTimerISR, true);
   // Set alarm to call onTimer function every second (value in microseconds).
   // Repeat the alarm (third parameter)
-  timerAlarmWrite(timer, SampleRate, true);
+  timerAlarmWrite(timer, SampleInt, true);
   // Start an alarm
   timerAlarmEnable(timer);
 }
