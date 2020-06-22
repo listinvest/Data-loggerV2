@@ -142,7 +142,8 @@ void TaskGetData(void *pvParameters)  // This is a task.
         vTaskDelay( pdMS_TO_TICKS( 1000 ));
         logfile.close();   
         Serial.println("All done here");     
-        vTaskSuspend( NULL );    
+        vTaskSuspendAll(); 
+        //vTaskSuspend( NULL );    
         //vTaskSuspend( (void *) &TaskSDWrite );
         //vTaskDelay( pdMS_TO_TICKS( 1000 ));
 
@@ -198,16 +199,16 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       Serial.print(RX_Data_t.value2Z,5);
       Serial.println();*/ 
       Count++; 
-      //Serial.println(Count); 
+      Serial.println(Count); 
 
-      uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
-      Serial.println(FreeSpace);
+      //uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
+      //Serial.println(FreeSpace);
       }
    vTaskDelete( NULL ); 
 }
 
 //------------------------------------------------------------------------------
-void TaskSDFlush(void *pvParameters)  // This is a task.
+/*void TaskSDFlush(void *pvParameters)  // This is a task.
 {
   (void) pvParameters;
 
@@ -234,7 +235,7 @@ void TaskSDClose(void *pvParameters)  // This is a task.
     //Serial.println("Close file"); 
   }
   vTaskDelete ( NULL ); 
-}
+}*/
 //------------------------------------------------------------------------------
 
 void TaskLed(void *pvParameters)
@@ -269,7 +270,7 @@ void setup() {
    }
 
   //============================================================================================================
-  //SPI.beginTransaction(SPISettings(80000000, MSBFIRST, SPI_MODE0));
+  //SPI.beginTransaction(SPISettings(40000000, LSBFIRST, SPI_MODE0));
 
   //Outputs, Pins, Buttons, Etc. 
   pinMode(LED_BUILTIN, OUTPUT);  //set Built in LED to show writing on SD Card
@@ -338,7 +339,7 @@ void setup() {
   Serial.println(filename);
 
   //Column labels
-  logfile.print("Time"); 
+  logfile.print("Time uS"); 
   logfile.print(",");
   logfile.print("Sensor 1 X");
   logfile.print(",");
@@ -398,7 +399,7 @@ void setup() {
     ,  NULL
     ,  3  // Priority
     ,  NULL 
-    ,  TaskCore0);  
+    ,  TaskCore1);  
   
 // Create Timer ===============================================================================
   // Use 1st timer of 4 (counted from zero).
