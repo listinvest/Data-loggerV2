@@ -6,8 +6,8 @@
 // files are saves text files, csv = NNNNNNNN.TXT
 // See ReadME and photos for additional hook up info
 
-const int SampleRate = 500; //Hz, Set sample rate here
-const int SampleLength = 5; //Seconds, Sample Length in Seconds
+const int SampleRate = 600; //Hz, Set sample rate here
+const int SampleLength = 1; //Seconds, Sample Length in Seconds
 
 //Use ESP32 duo core
 const int TaskCore1  = 1;
@@ -57,16 +57,35 @@ struct Data_t {
 //#define LIS3DH_MISO 15  //SDO
 //#define LIS3DH_MOSI 27  //SDA
 // Used for hardware & software SPI
-#define LIS3DH_CS 14  //ESP32: 14/A6 , Cortex m0: 5, Use for upper accel (Sensor 1!!!) = hbar, seatpost, etc.
-#define LIS3DH_CS2 15  //ESP32: 15/A8, Cortex m0: 9, Use for lower accel (Sensor 2!!!) = axles, etc. 
+//#define LIS3DH_CS 14  //ESP32: 14/A6 , Cortex m0: 5, Use for upper accel (Sensor 1!!!) = hbar, seatpost, etc.
+//#define LIS3DH_CS2 15  //ESP32: 15/A8, Cortex m0: 9, Use for lower accel (Sensor 2!!!) = axles, etc. 
 // software SPI
 //Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS, LIS3DH_MOSI, LIS3DH_MISO, LIS3DH_CLK);
 
 // hardware SPI 1 LIS3DH->Feather:  Power to Vin, Gnd to Gnd, SCL->SCK, SDA->MOSO, SDO->MOSI, CS->CS 14/15
 // Sensor 1 Hardware SPI
-Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS);
+//Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS);
 // Sensor 2 Hardware SPI
-Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH_CS2);
+//Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH_CS2);
+
+// Used for software SPI
+#define LIS3DH_CLK 21
+#define LIS3DH_MISO 33
+#define LIS3DH_MOSI 32
+// Used for hardware & software SPI
+#define LIS3DH_CS 14
+
+// Used for software SPI
+#define LIS3DH2_CLK 25
+#define LIS3DH2_MISO 26
+#define LIS3DH2_MOSI 4
+// Used for hardware & software SPI
+#define LIS3DH2_CS 15
+
+// software SPI
+Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS, LIS3DH_MOSI, LIS3DH_MISO, LIS3DH_CLK);
+// software SPI 2 
+Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH2_CS, LIS3DH2_MOSI, LIS3DH2_MISO, LIS3DH2_CLK);
 
 //------------------------------------------------------------------------------
 // define tasks for Sensor Data and SD Write
@@ -120,8 +139,8 @@ void TaskGetData(void *pvParameters)  // This is a task.
     TX_Data_t.value2X = event2.acceleration.x;
     TX_Data_t.value2Y = event2.acceleration.y;
     TX_Data_t.value2Z = event2.acceleration.z;
-    /*Serial.print(TX_Data_t.usec); 
-    Serial.print(',');
+    //Serial.print(TX_Data_t.usec); 
+    /*Serial.print(',');
     Serial.print(TX_Data_t.value1X,5);
     Serial.print(',');
     Serial.print(TX_Data_t.value1Y,5);
@@ -134,7 +153,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
     Serial.print(',');
     Serial.print(TX_Data_t.value2Z,5);
     Serial.println();*/
-    if(xQueueSend( DataQueue, ( void * ) &TX_Data_t, 200 ) != pdPASS )  //portMAX_DELAY
+    if(xQueueSend( DataQueue, ( void * ) &TX_Data_t, 2000 ) != pdPASS )  //portMAX_DELAY
       {
         Serial.println("xQueueSend is not working"); 
       }
@@ -199,9 +218,9 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       Serial.print(RX_Data_t.value2Z,5);
       Serial.println();*/ 
       Count++; 
-      Serial.println(Count); 
+      //Serial.println(Count); 
 
-      //uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
+      uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
       //Serial.println(FreeSpace);
       }
    vTaskDelete( NULL ); 
@@ -264,7 +283,7 @@ void setup() {
   Serial.begin(115200);
 
   //Queue Setup
-  DataQueue = xQueueCreate(10, sizeof( Data_t ));
+  DataQueue = xQueueCreate(30, sizeof( Data_t ));
   if(DataQueue == NULL){
      Serial.println("Error Creating the Queue");
    }
@@ -405,7 +424,7 @@ void setup() {
   // Use 1st timer of 4 (counted from zero).
   // Set 80 divider for prescaler (see ESP32 Technical Reference Manual for more
   // info).
-  timer = timerBegin(0, 80, true);
+  timer = timerBegin(1, 80, true);
   // Attach onTimer function to our timer.
   timerAttachInterrupt(timer, &vTimerISR, true);
   // Set alarm to call onTimer function every second (value in microseconds).
