@@ -14,6 +14,7 @@ const int TaskCore1  = 1;
 const int TaskCore0 = 0;
 int SampleInt = 1000000 / SampleRate; 
 int TotalCount = SampleLength * SampleRate;
+int Flush = 5000;
 
 //Libraries
 #include <SPI.h>
@@ -91,9 +92,11 @@ QueueHandle_t DataQueue; //
 SemaphoreHandle_t timerSemaphore; 
 SemaphoreHandle_t ButtonSemaphore;
 SemaphoreHandle_t CountSemaphore; 
+SemaphoreHandle_t FlushSemaphore;
 int Count = 0; 
 int G = 0;
 int H = 0; 
+int F = 0;
 bool LogData = HIGH; 
 
 /////////////////////////////////////////////////////////////////////////////////////
@@ -113,7 +116,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
 
   for (;;) // A Task shall never return or exit.
   {
-    if (xSemaphoreTake(timerSemaphore, 100) == pdTRUE && LogData == HIGH)
+    if (xSemaphoreTake(timerSemaphore, portMAX_DELAY ) == pdTRUE )
     {
     sensors_event_t event;
     lis.getEvent(&event);
@@ -140,7 +143,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
     Serial.print(',');
     Serial.print(TX_Data_t.value2Z,5);
     Serial.println();*/
-    if(xQueueSend( DataQueue, ( void * ) &TX_Data_t, portMAX_DELAY ) != pdPASS && LogData == HIGH )  //portMAX_DELAY
+    if(xQueueSend( DataQueue, ( void * ) &TX_Data_t, portMAX_DELAY ) != pdPASS )  //portMAX_DELAY
       {
         Serial.println("xQueueSend is not working"); 
       }
@@ -158,7 +161,7 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
   for (;;)
   {
 
-      if( xQueueReceive( DataQueue, &( RX_Data_t ), portMAX_DELAY ) != pdPASS && LogData == HIGH )   //portMAX_DELAY
+      if( xQueueReceive( DataQueue, &( RX_Data_t ), portMAX_DELAY ) != pdPASS )   //portMAX_DELAY
       {
         Serial.println("xQueueRecieve is not working");
       }
@@ -190,8 +193,12 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       Serial.print(',');
       Serial.print(RX_Data_t.value2Z,5);
       Serial.println();*/ 
-      Count++; 
+      Count++;
       //Serial.println(Count); 
+      if ( Count == Flush )
+        {
+          xSemaphoreGive( FlushSemaphore ); // Flush at XXX count 
+        }
       if ( Count == TotalCount )
         {
           xSemaphoreGive( CountSemaphore ); 
@@ -211,13 +218,10 @@ void TaskSDFlush(void *pvParameters)  // This is a task.
 
   for (;;)
   {
-    if (LogData == HIGH )
+    if ( xSemaphoreTake( FlushSemaphore, portMAX_DELAY ) == pdTRUE )
     {
-    //G++;
-    //vTaskDelay( pdMS_TO_TICKS(5000) );
     //logfile.flush();
     //Serial.println("Flushed file"); 
-    H++; 
     }
   }
   vTaskDelete ( NULL ); 
@@ -233,20 +237,22 @@ void TaskLed(void *pvParameters)
     // Take the semaphore.
     if( xSemaphoreTake(CountSemaphore, portMAX_DELAY) == pdPASS )
         {
-        LogData = LOW; 
+        //LogData = LOW; 
+        //vTaskSuspend( (void *) &vTimerISR   );
+        //vTaskSuspend( (void *) &TaskGetData );
+        //vTaskSuspend( (void *) &TaskSDWrite );
         Serial.println("Recieved count semaphore"); 
         Serial.println("Log Data is Low"); 
         logfile.close();  
         Serial.println("All done here");
-        vTaskDelay( 90000 );
+        vTaskDelay( 20000 / portTICK_PERIOD_MS );
         //LogData = HIGH; 
         //vTaskSuspend( (void *) &TaskSDFlush );
-        //vTaskSuspend( (void *) &TaskGetData );
-        //vTaskSuspend( (void *) &TaskSDWrite );
+        
+        
         //vTaskSuspendAll(); 
         }  
-    
-    
+       
     if (xSemaphoreTake(ButtonSemaphore, portMAX_DELAY) == pdPASS) {
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
     }
@@ -283,6 +289,9 @@ void setup() {
 
   // Create semaphore for counting samples
   CountSemaphore = xSemaphoreCreateBinary(); 
+
+  // Create semaphore for Flush samples
+  FlushSemaphore = xSemaphoreCreateCounting( Flush, 0 ); 
   
   //ACCEL Setup and RUN
   if (! lis.begin(0x18)) {   // change this to 0x19 for alternative i2c address
@@ -402,8 +411,6 @@ void setup() {
   timerAlarmWrite(timer, SampleInt, true);
   // Start an alarm
   timerAlarmEnable(timer);
-
-
 
 }
 
