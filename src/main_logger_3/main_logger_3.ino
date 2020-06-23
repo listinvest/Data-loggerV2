@@ -144,12 +144,12 @@ void TaskGetData(void *pvParameters)  // This is a task.
       }
     if( Count == TotalCount){
         //vTaskSuspend( NULL ); 
-        vTaskDelay( pdMS_TO_TICKS( 100 ));
+        //vTaskDelay( pdMS_TO_TICKS( 100 ));
         logfile.close();  
         //vTaskDelay( pdMS_TO_TICKS( 3000 ));
         Serial.println("All done here");
-        vTaskSuspend( NULL );  
-        vTaskSuspend( (void *) &TaskSDWrite );
+        //vTaskSuspend( NULL );  
+        //vTaskSuspend( (void *) &TaskSDWrite );
         //vTaskSuspendAll(); 
         //vTaskDelay( pdMS_TO_TICKS( 10000 ));
           
