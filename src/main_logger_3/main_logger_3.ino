@@ -204,7 +204,7 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       Count++; 
       //Serial.println(Count); 
 
-      uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
+      //uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
       //Serial.println(FreeSpace);
       }
    vTaskDelete( NULL ); 
@@ -291,7 +291,7 @@ void setup() {
 
   // SD CARD SETUP ====================================================================
   // see if the card is present and can be initialized:  (Use highest SD clock possible, but lower if has error, 15 Mhz works, possible to go to to 25 Mhz if sample rate is low enough
-  if (!sd.begin(sdChipSelect, SD_SCK_MHZ(9))) {
+  if (!sd.begin(sdChipSelect, SD_SCK_MHZ(8))) {
     Serial.println("Card init. failed!");
     while (1) yield(); 
   }
@@ -371,7 +371,7 @@ void setup() {
     ,  NULL
     ,  3  // Priority
     ,  NULL 
-    ,  TaskCore1);  
+    ,  TaskCore0);  
   
 // Create Timer ===============================================================================
   // Use 1st timer of 4 (counted from zero).
