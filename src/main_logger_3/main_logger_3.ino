@@ -3,10 +3,10 @@
 // Created:  May 12 2020
 // Updated:
 // Uses SPI for SD & Accels, hoping for 1000 Hz. sampling 
-// files are saves text files, csv = NNNNNNNN.TXT
+// files are saves text files = DATANN.TXT
 // See ReadME and photos for additional hook up info
 
-const int SampleRate = 600; //Hz, Set sample rate here
+const int SampleRate = 1000; //Hz, Set sample rate here
 const int SampleLength = 1; //Seconds, Sample Length in Seconds
 
 //Use ESP32 duo core
@@ -16,7 +16,6 @@ int SampleInt = 1000000 / SampleRate;
 int TotalCount = SampleLength * SampleRate;
 
 //Libraries
-//#include <Wire.h>
 #include <SPI.h>
 #include "SdFat.h"
 #include <Adafruit_LIS3DH.h>
@@ -29,7 +28,6 @@ int TotalCount = SampleLength * SampleRate;
 #include "freertos/event_groups.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
-//#include <Arduino_FreeRTOS.h>
 
 #define LED_BUILTIN LED_BUILTIN //LED light for notification
 //------------------------------------------------------------------------------
@@ -52,16 +50,6 @@ struct Data_t {
 
 //------------------------------------------------------------------------------
 // Accel Lis3dh definitions, SPI or I2C
-// Used for software SPI
-//#define LIS3DH_CLK 32  //SCL
-//#define LIS3DH_MISO 15  //SDO
-//#define LIS3DH_MOSI 27  //SDA
-// Used for hardware & software SPI
-//#define LIS3DH_CS 14  //ESP32: 14/A6 , Cortex m0: 5, Use for upper accel (Sensor 1!!!) = hbar, seatpost, etc.
-//#define LIS3DH_CS2 15  //ESP32: 15/A8, Cortex m0: 9, Use for lower accel (Sensor 2!!!) = axles, etc. 
-// software SPI
-//Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS, LIS3DH_MOSI, LIS3DH_MISO, LIS3DH_CLK);
-
 // hardware SPI 1 LIS3DH->Feather:  Power to Vin, Gnd to Gnd, SCL->SCK, SDA->MOSO, SDO->MOSI, CS->CS 14/15
 // Sensor 1 Hardware SPI
 //Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS);
@@ -72,15 +60,12 @@ struct Data_t {
 #define LIS3DH_CLK 21
 #define LIS3DH_MISO 33
 #define LIS3DH_MOSI 32
-// Used for hardware & software SPI
-#define LIS3DH_CS 14
-
-// Used for software SPI
 #define LIS3DH2_CLK 25
 #define LIS3DH2_MISO 26
 #define LIS3DH2_MOSI 4
 // Used for hardware & software SPI
-#define LIS3DH2_CS 15
+#define LIS3DH_CS 14   //ESP32: 14/A6 , Cortex m0: 5, Use for upper accel (Sensor 1!!!) = hbar, seatpost, etc.
+#define LIS3DH2_CS 15  //ESP32: 15/A8, Cortex m0: 9, Use for lower accel (Sensor 2!!!) = axles, etc. 
 
 // software SPI
 Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS, LIS3DH_MOSI, LIS3DH_MISO, LIS3DH_CLK);
@@ -93,7 +78,6 @@ void TaskLed( void *pvParamaters );
 void TaskGetData( void *pvParameters );
 void TaskSDWrite( void *pvParameters );
 //void TaskSDFlush( void *pvParameters );
-//void TaskSDClose( void *pvParameters );
 //------------------------------------------------------------------------------
 
 //Hardware Timer
@@ -123,11 +107,12 @@ void IRAM_ATTR ButtonISR()
 //------------------------------------------------------------------------------
 void TaskGetData(void *pvParameters)  // This is a task.
 {
+  vTaskDelay( pdMS_TO_TICKS( 1000 )); //Give Time to get SPI, accels, etc. going
   (void) pvParameters;
 
   for (;;) // A Task shall never return or exit.
   {
-    if (xSemaphoreTake(timerSemaphore, 10) == pdTRUE){
+    if (xSemaphoreTake(timerSemaphore, 1000) == pdTRUE){
     sensors_event_t event;
     lis.getEvent(&event);
     sensors_event_t event2;
@@ -158,19 +143,17 @@ void TaskGetData(void *pvParameters)  // This is a task.
         Serial.println("xQueueSend is not working"); 
       }
     if( Count == TotalCount){
-        vTaskDelay( pdMS_TO_TICKS( 1000 ));
+        vTaskDelay( pdMS_TO_TICKS( 3000 ));
         logfile.close();   
-        Serial.println("All done here");     
+        Serial.println("All done here");
+        vTaskSuspend( NULL );      
+        vTaskSuspend( (void *) &TaskSDWrite );
+        vTaskDelay( pdMS_TO_TICKS( 1000 ));
         vTaskSuspendAll(); 
+        vTaskDelay( pdMS_TO_TICKS( 10000 ));
         //vTaskSuspend( NULL );    
-        //vTaskSuspend( (void *) &TaskSDWrite );
-        //vTaskDelay( pdMS_TO_TICKS( 1000 ));
-
         //vTaskSuspend( (void *) &TaskGetData );
-        
-        //vTaskDelay( pdMS_TO_TICKS( 10000 ));
-         
-      }  
+        }  
     }
   }
   vTaskDelete( NULL );
@@ -239,21 +222,6 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
     //Serial.println("Flushed file"); 
   }
   vTaskDelete ( NULL ); 
-}
-
-//------------------------------------------------------------------------------
-void TaskSDClose(void *pvParameters)  // This is a task.
-{
-  (void) pvParameters;
-
-  for (;;)
-  {
-    H++;
-    //vTaskDelay( pdMS_TO_TICKS(6000) );
-    //logfile.close();
-    //Serial.println("Close file"); 
-  }
-  vTaskDelete ( NULL ); 
 }*/
 //------------------------------------------------------------------------------
 
@@ -266,11 +234,6 @@ void TaskLed(void *pvParameters)
     // Take the semaphore.
     if (xSemaphoreTake(ButtonSemaphore, portMAX_DELAY) == pdPASS) {
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
-    //digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-    //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
-    //digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
-    //vTaskDelay(100);  // one tick delay (15ms) in between reads for stability
-    //vTaskDelay(intervalTicks);  // one tick delay (1000 uSec/1 mSec) in between reads for 1000 Hz reading 
     }
    }
 }
@@ -289,8 +252,6 @@ void setup() {
    }
 
   //============================================================================================================
-  //SPI.beginTransaction(SPISettings(40000000, LSBFIRST, SPI_MODE0));
-
   //Outputs, Pins, Buttons, Etc. 
   pinMode(LED_BUILTIN, OUTPUT);  //set Built in LED to show writing on SD Card
   pinMode(27, INPUT); //button to turn recording on/off, In [HIGH]
@@ -329,7 +290,7 @@ void setup() {
 
   // SD CARD SETUP ====================================================================
   // see if the card is present and can be initialized:  (Use highest SD clock possible, but lower if has error, 15 Mhz works, possible to go to to 25 Mhz if sample rate is low enough
-  if (!sd.begin(sdChipSelect, SD_SCK_MHZ(15))) {
+  if (!sd.begin(sdChipSelect, SD_SCK_MHZ(9))) {
     Serial.println("Card init. failed!");
     while (1) yield(); 
   }
@@ -402,15 +363,6 @@ void setup() {
     ,  NULL 
     ,  TaskCore1);*/
 
-  /*xTaskCreatePinnedToCore(
-    TaskSDClose
-    ,  "Close the File"
-    ,  2000 // Stack size
-    ,  NULL
-    ,  3  // Priority
-    ,  NULL 
-    ,  TaskCore1);*/  
-
     xTaskCreatePinnedToCore(
     TaskLed
     ,  "LED"
@@ -432,7 +384,12 @@ void setup() {
   timerAlarmWrite(timer, SampleInt, true);
   // Start an alarm
   timerAlarmEnable(timer);
+
+  vTaskDelay( pdMS_TO_TICKS(5000) );
+
 }
+
+
   
 //================================================================================================================================
 void loop()
