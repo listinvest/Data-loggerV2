@@ -107,7 +107,7 @@ void IRAM_ATTR ButtonISR()
 //------------------------------------------------------------------------------
 void TaskGetData(void *pvParameters)  // This is a task.
 {
-  vTaskDelay( pdMS_TO_TICKS( 1000 )); //Give Time to get SPI, accels, etc. going
+  //vTaskDelay( pdMS_TO_TICKS( 1000 )); //Give Time to get SPI, accels, etc. going
   (void) pvParameters;
 
   for (;;) // A Task shall never return or exit.
@@ -138,20 +138,21 @@ void TaskGetData(void *pvParameters)  // This is a task.
     Serial.print(',');
     Serial.print(TX_Data_t.value2Z,5);
     Serial.println();*/
-    if(xQueueSend( DataQueue, ( void * ) &TX_Data_t, 2000 ) != pdPASS )  //portMAX_DELAY
+    if(xQueueSend( DataQueue, ( void * ) &TX_Data_t, portMAX_DELAY ) != pdPASS )  //portMAX_DELAY
       {
         Serial.println("xQueueSend is not working"); 
       }
     if( Count == TotalCount){
-        vTaskDelay( pdMS_TO_TICKS( 3000 ));
-        logfile.close();   
+        //vTaskSuspend( NULL ); 
+        vTaskDelay( pdMS_TO_TICKS( 100 ));
+        logfile.close();  
+        //vTaskDelay( pdMS_TO_TICKS( 3000 ));
         Serial.println("All done here");
-        vTaskSuspend( NULL );      
+        vTaskSuspend( NULL );  
         vTaskSuspend( (void *) &TaskSDWrite );
-        vTaskDelay( pdMS_TO_TICKS( 1000 ));
-        vTaskSuspendAll(); 
-        vTaskDelay( pdMS_TO_TICKS( 10000 ));
-        //vTaskSuspend( NULL );    
+        //vTaskSuspendAll(); 
+        //vTaskDelay( pdMS_TO_TICKS( 10000 ));
+          
         //vTaskSuspend( (void *) &TaskGetData );
         }  
     }
@@ -385,7 +386,7 @@ void setup() {
   // Start an alarm
   timerAlarmEnable(timer);
 
-  vTaskDelay( pdMS_TO_TICKS(5000) );
+  //vTaskDelay( pdMS_TO_TICKS(5000) );
 
 }
 
