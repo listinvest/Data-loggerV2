@@ -77,7 +77,7 @@ Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH2_CS, LIS3DH2_MOSI, LIS3DH2_MISO, L
 void TaskLed( void *pvParamaters );
 void TaskGetData( void *pvParameters );
 void TaskSDWrite( void *pvParameters );
-//void TaskSDFlush( void *pvParameters );
+void TaskSDFlush( void *pvParameters );
 //------------------------------------------------------------------------------
 
 //Hardware Timer
@@ -87,12 +87,14 @@ hw_timer_t * timer = NULL;  //create timer handler
 QueueHandle_t DataQueue; // 
 
 //ISR tools
-//Create Interrupt Semaphore
+//Create Interrupt Semaphores
 SemaphoreHandle_t timerSemaphore; 
 SemaphoreHandle_t ButtonSemaphore;
+SemaphoreHandle_t CountSemaphore; 
 int Count = 0; 
 int G = 0;
 int H = 0; 
+bool LogData = HIGH; 
 
 /////////////////////////////////////////////////////////////////////////////////////
 void IRAM_ATTR vTimerISR()  //Timer ISR 
@@ -107,12 +109,12 @@ void IRAM_ATTR ButtonISR()
 //------------------------------------------------------------------------------
 void TaskGetData(void *pvParameters)  // This is a task.
 {
-  //vTaskDelay( pdMS_TO_TICKS( 1000 )); //Give Time to get SPI, accels, etc. going
-  (void) pvParameters;
+    (void) pvParameters;
 
   for (;;) // A Task shall never return or exit.
   {
-    if (xSemaphoreTake(timerSemaphore, 1000) == pdTRUE){
+    if (xSemaphoreTake(timerSemaphore, 100) == pdTRUE && LogData == HIGH)
+    {
     sensors_event_t event;
     lis.getEvent(&event);
     sensors_event_t event2;
@@ -138,23 +140,10 @@ void TaskGetData(void *pvParameters)  // This is a task.
     Serial.print(',');
     Serial.print(TX_Data_t.value2Z,5);
     Serial.println();*/
-    if(xQueueSend( DataQueue, ( void * ) &TX_Data_t, portMAX_DELAY ) != pdPASS )  //portMAX_DELAY
+    if(xQueueSend( DataQueue, ( void * ) &TX_Data_t, portMAX_DELAY ) != pdPASS && LogData == HIGH )  //portMAX_DELAY
       {
         Serial.println("xQueueSend is not working"); 
       }
-    if( Count == TotalCount){
-        //vTaskSuspend( NULL ); 
-        //vTaskDelay( pdMS_TO_TICKS( 100 ));
-        logfile.close();  
-        //vTaskDelay( pdMS_TO_TICKS( 3000 ));
-        Serial.println("All done here");
-        //vTaskSuspend( NULL );  
-        //vTaskSuspend( (void *) &TaskSDWrite );
-        //vTaskSuspendAll(); 
-        //vTaskDelay( pdMS_TO_TICKS( 10000 ));
-          
-        //vTaskSuspend( (void *) &TaskGetData );
-        }  
     }
   }
   vTaskDelete( NULL );
@@ -169,7 +158,7 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
   for (;;)
   {
 
-      if( xQueueReceive( DataQueue, &( RX_Data_t ), portMAX_DELAY ) != pdPASS )   //portMAX_DELAY
+      if( xQueueReceive( DataQueue, &( RX_Data_t ), portMAX_DELAY ) != pdPASS && LogData == HIGH )   //portMAX_DELAY
       {
         Serial.println("xQueueRecieve is not working");
       }
@@ -203,6 +192,11 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       Serial.println();*/ 
       Count++; 
       //Serial.println(Count); 
+      if ( Count == TotalCount )
+        {
+          xSemaphoreGive( CountSemaphore ); 
+          //Serial.println("Give up count semaphore"); 
+        }
 
       //uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
       //Serial.println(FreeSpace);
@@ -211,19 +205,23 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
 }
 
 //------------------------------------------------------------------------------
-/*void TaskSDFlush(void *pvParameters)  // This is a task.
+void TaskSDFlush(void *pvParameters)  // This is a task.
 {
   (void) pvParameters;
 
   for (;;)
   {
-    G++;
+    if (LogData == HIGH )
+    {
+    //G++;
     //vTaskDelay( pdMS_TO_TICKS(5000) );
     //logfile.flush();
     //Serial.println("Flushed file"); 
+    H++; 
+    }
   }
   vTaskDelete ( NULL ); 
-}*/
+}
 //------------------------------------------------------------------------------
 
 void TaskLed(void *pvParameters)
@@ -233,6 +231,22 @@ void TaskLed(void *pvParameters)
   for (;;) 
     {
     // Take the semaphore.
+    if( xSemaphoreTake(CountSemaphore, portMAX_DELAY) == pdPASS )
+        {
+        LogData = LOW; 
+        Serial.println("Recieved count semaphore"); 
+        Serial.println("Log Data is Low"); 
+        logfile.close();  
+        Serial.println("All done here");
+        vTaskDelay( 90000 );
+        //LogData = HIGH; 
+        //vTaskSuspend( (void *) &TaskSDFlush );
+        //vTaskSuspend( (void *) &TaskGetData );
+        //vTaskSuspend( (void *) &TaskSDWrite );
+        //vTaskSuspendAll(); 
+        }  
+    
+    
     if (xSemaphoreTake(ButtonSemaphore, portMAX_DELAY) == pdPASS) {
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
     }
@@ -244,7 +258,7 @@ void TaskLed(void *pvParameters)
 void setup() {
 
   // initialize serial communication at 115200 bits per second:
-  Serial.begin(115200);
+  Serial.begin(19200);
 
   //Queue Setup
   DataQueue = xQueueCreate(30, sizeof( Data_t ));
@@ -266,6 +280,9 @@ void setup() {
 
   // Create semaphore to inform us when the timer has fired
   timerSemaphore = xSemaphoreCreateBinary();
+
+  // Create semaphore for counting samples
+  CountSemaphore = xSemaphoreCreateBinary(); 
   
   //ACCEL Setup and RUN
   if (! lis.begin(0x18)) {   // change this to 0x19 for alternative i2c address
@@ -291,7 +308,7 @@ void setup() {
 
   // SD CARD SETUP ====================================================================
   // see if the card is present and can be initialized:  (Use highest SD clock possible, but lower if has error, 15 Mhz works, possible to go to to 25 Mhz if sample rate is low enough
-  if (!sd.begin(sdChipSelect, SD_SCK_MHZ(8))) {
+  if (!sd.begin(sdChipSelect, SD_SCK_MHZ(35))) {
     Serial.println("Card init. failed!");
     while (1) yield(); 
   }
@@ -355,14 +372,14 @@ void setup() {
     ,  NULL 
     ,  TaskCore0);
 
-  /*xTaskCreatePinnedToCore(
+  xTaskCreatePinnedToCore(
     TaskSDFlush
     ,  "Write Data to Card"
     ,  2000 // Stack size
     ,  NULL
     ,  3  // Priority
     ,  NULL 
-    ,  TaskCore1);*/
+    ,  TaskCore0);
 
     xTaskCreatePinnedToCore(
     TaskLed
@@ -386,7 +403,7 @@ void setup() {
   // Start an alarm
   timerAlarmEnable(timer);
 
-  //vTaskDelay( pdMS_TO_TICKS(5000) );
+
 
 }
 
