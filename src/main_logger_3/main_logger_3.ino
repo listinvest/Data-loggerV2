@@ -6,15 +6,14 @@
 // files are saves text files = DATANN.TXT
 // See ReadME and photos for additional hook up info
 
-const int SampleRate = 1000; //Hz, Set sample rate here
-const int SampleLength = 1; //Seconds, Sample Length in Seconds
+const int SampleRate = 500; //Hz, Set sample rate here
+const int SampleLength = 10; //Seconds, Sample Length in Seconds
 
 //Use ESP32 duo core
 const int TaskCore1  = 1;
 const int TaskCore0 = 0;
 int SampleInt = 1000000 / SampleRate; 
 int TotalCount = SampleLength * SampleRate;
-int Flush = 5000;
 
 //Libraries
 #include <SPI.h>
@@ -78,7 +77,7 @@ Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH2_CS, LIS3DH2_MOSI, LIS3DH2_MISO, L
 void TaskLed( void *pvParamaters );
 void TaskGetData( void *pvParameters );
 void TaskSDWrite( void *pvParameters );
-void TaskSDFlush( void *pvParameters );
+//void TaskSDFlush( void *pvParameters );
 //------------------------------------------------------------------------------
 
 //Hardware Timer
@@ -97,7 +96,6 @@ int Count = 0;
 int G = 0;
 int H = 0; 
 int F = 0;
-bool LogData = HIGH; 
 
 /////////////////////////////////////////////////////////////////////////////////////
 void IRAM_ATTR vTimerISR()  //Timer ISR 
@@ -129,20 +127,6 @@ void TaskGetData(void *pvParameters)  // This is a task.
     TX_Data_t.value2X = event2.acceleration.x;
     TX_Data_t.value2Y = event2.acceleration.y;
     TX_Data_t.value2Z = event2.acceleration.z;
-    //Serial.print(TX_Data_t.usec); 
-    /*Serial.print(',');
-    Serial.print(TX_Data_t.value1X,5);
-    Serial.print(',');
-    Serial.print(TX_Data_t.value1Y,5);
-    Serial.print(',');
-    Serial.print(TX_Data_t.value1Z,5);
-    Serial.print(',');
-    Serial.print(TX_Data_t.value2X,5);
-    Serial.print(',');
-    Serial.print(TX_Data_t.value2Y,5);
-    Serial.print(',');
-    Serial.print(TX_Data_t.value2Z,5);
-    Serial.println();*/
     if(xQueueSend( DataQueue, ( void * ) &TX_Data_t, portMAX_DELAY ) != pdPASS )  //portMAX_DELAY
       {
         Serial.println("xQueueSend is not working"); 
@@ -179,30 +163,19 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       logfile.print(',');
       logfile.print(RX_Data_t.value2Z,4);
       logfile.println(); 
-      /*Serial.print(RX_Data_t.usec); 
-      Serial.print(',');
-      Serial.print(RX_Data_t.value1X,5);
-      Serial.print(',');
-      Serial.print(RX_Data_t.value1Y,5);
-      Serial.print(',');
-      Serial.print(RX_Data_t.value1Z,5);
-      Serial.print(',');
-      Serial.print(RX_Data_t.value2X,5);
-      Serial.print(',');
-      Serial.print(RX_Data_t.value2Y,5);
-      Serial.print(',');
-      Serial.print(RX_Data_t.value2Z,5);
-      Serial.println();*/ 
       Count++;
       //Serial.println(Count); 
-      if ( Count == Flush )
-        {
-          xSemaphoreGive( FlushSemaphore ); // Flush at XXX count 
-        }
       if ( Count == TotalCount )
         {
-          xSemaphoreGive( CountSemaphore ); 
+          //Serial.println("Try to give Semaphore");
+          //xSemaphoreGive( CountSemaphore ); 
           //Serial.println("Give up count semaphore"); 
+          //vTaskDelay ( 4000 / portTICK_PERIOD_MS );
+          logfile.close(); 
+          vTaskDelay ( 8000 / portTICK_PERIOD_MS ); 
+          Serial.println("All done here"); 
+          vTaskDelay( 20000000 / portTICK_PERIOD_MS );
+          //vTaskSuspendAll(); 
         }
 
       //uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
@@ -212,20 +185,18 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
 }
 
 //------------------------------------------------------------------------------
-void TaskSDFlush(void *pvParameters)  // This is a task.
+/*void TaskSDFlush(void *pvParameters)  // This is a task.
 {
   (void) pvParameters;
 
   for (;;)
   {
-    if ( xSemaphoreTake( FlushSemaphore, portMAX_DELAY ) == pdTRUE )
-    {
-    //logfile.flush();
-    //Serial.println("Flushed file"); 
-    }
+    vTaskDelay( 1000 / portTICK_PERIOD_MS ); 
+    logfile.flush();
+    Serial.println("Flushed file"); 
   }
   vTaskDelete ( NULL ); 
-}
+}*/
 //------------------------------------------------------------------------------
 
 void TaskLed(void *pvParameters)
@@ -237,19 +208,13 @@ void TaskLed(void *pvParameters)
     // Take the semaphore.
     if( xSemaphoreTake(CountSemaphore, portMAX_DELAY) == pdPASS )
         {
-        //LogData = LOW; 
-        //vTaskSuspend( (void *) &vTimerISR   );
         //vTaskSuspend( (void *) &TaskGetData );
         //vTaskSuspend( (void *) &TaskSDWrite );
-        Serial.println("Recieved count semaphore"); 
-        Serial.println("Log Data is Low"); 
-        logfile.close();  
-        Serial.println("All done here");
-        vTaskDelay( 20000 / portTICK_PERIOD_MS );
-        //LogData = HIGH; 
         //vTaskSuspend( (void *) &TaskSDFlush );
-        
-        
+        //Serial.println("Recieved count semaphore"); 
+        //logfile.close();  
+        //Serial.println("All done here");
+        //vTaskDelay( 20000000 / portTICK_PERIOD_MS );
         //vTaskSuspendAll(); 
         }  
        
@@ -264,7 +229,7 @@ void TaskLed(void *pvParameters)
 void setup() {
 
   // initialize serial communication at 115200 bits per second:
-  Serial.begin(19200);
+  Serial.begin(115200);
 
   //Queue Setup
   DataQueue = xQueueCreate(30, sizeof( Data_t ));
@@ -291,7 +256,7 @@ void setup() {
   CountSemaphore = xSemaphoreCreateBinary(); 
 
   // Create semaphore for Flush samples
-  FlushSemaphore = xSemaphoreCreateCounting( Flush, 0 ); 
+  //FlushSemaphore = xSemaphoreCreateCounting( Flush, 0 ); 
   
   //ACCEL Setup and RUN
   if (! lis.begin(0x18)) {   // change this to 0x19 for alternative i2c address
@@ -381,14 +346,14 @@ void setup() {
     ,  NULL 
     ,  TaskCore0);
 
-  xTaskCreatePinnedToCore(
+  /*xTaskCreatePinnedToCore(
     TaskSDFlush
     ,  "Write Data to Card"
     ,  2000 // Stack size
     ,  NULL
     ,  3  // Priority
     ,  NULL 
-    ,  TaskCore0);
+    ,  TaskCore0);*/
 
     xTaskCreatePinnedToCore(
     TaskLed
