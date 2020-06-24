@@ -6,7 +6,7 @@
 // files are saves text files = DATANN.TXT
 // See ReadME and photos for additional hook up info
 
-const int SampleRate = 500; //Hz, Set sample rate here
+const int SampleRate = 400; //Hz, Set sample rate here
 const int SampleLength = 10; //Seconds, Sample Length in Seconds
 
 //Use ESP32 duo core
@@ -77,7 +77,6 @@ Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH2_CS, LIS3DH2_MOSI, LIS3DH2_MISO, L
 void TaskLed( void *pvParamaters );
 void TaskGetData( void *pvParameters );
 void TaskSDWrite( void *pvParameters );
-//void TaskSDFlush( void *pvParameters );
 //------------------------------------------------------------------------------
 
 //Hardware Timer
@@ -91,7 +90,6 @@ QueueHandle_t DataQueue; //
 SemaphoreHandle_t timerSemaphore; 
 SemaphoreHandle_t ButtonSemaphore;
 SemaphoreHandle_t CountSemaphore; 
-SemaphoreHandle_t FlushSemaphore;
 int Count = 0; 
 int G = 0;
 int H = 0; 
@@ -167,10 +165,6 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       //Serial.println(Count); 
       if ( Count == TotalCount )
         {
-          //Serial.println("Try to give Semaphore");
-          //xSemaphoreGive( CountSemaphore ); 
-          //Serial.println("Give up count semaphore"); 
-          //vTaskDelay ( 4000 / portTICK_PERIOD_MS );
           logfile.close(); 
           vTaskDelay ( 8000 / portTICK_PERIOD_MS ); 
           Serial.println("All done here"); 
@@ -185,20 +179,6 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
 }
 
 //------------------------------------------------------------------------------
-/*void TaskSDFlush(void *pvParameters)  // This is a task.
-{
-  (void) pvParameters;
-
-  for (;;)
-  {
-    vTaskDelay( 1000 / portTICK_PERIOD_MS ); 
-    logfile.flush();
-    Serial.println("Flushed file"); 
-  }
-  vTaskDelete ( NULL ); 
-}*/
-//------------------------------------------------------------------------------
-
 void TaskLed(void *pvParameters)
 {
   (void) pvParameters;
@@ -210,9 +190,7 @@ void TaskLed(void *pvParameters)
         {
         //vTaskSuspend( (void *) &TaskGetData );
         //vTaskSuspend( (void *) &TaskSDWrite );
-        //vTaskSuspend( (void *) &TaskSDFlush );
         //Serial.println("Recieved count semaphore"); 
-        //logfile.close();  
         //Serial.println("All done here");
         //vTaskDelay( 20000000 / portTICK_PERIOD_MS );
         //vTaskSuspendAll(); 
@@ -231,8 +209,11 @@ void setup() {
   // initialize serial communication at 115200 bits per second:
   Serial.begin(115200);
 
+  //SPI
+  //SPI.beginTransaction(SPISettings(40000000, MSBFIRST, SPI_MODE0));
+
   //Queue Setup
-  DataQueue = xQueueCreate(30, sizeof( Data_t ));
+  DataQueue = xQueueCreate(10, sizeof( Data_t ));
   if(DataQueue == NULL){
      Serial.println("Error Creating the Queue");
    }
@@ -346,15 +327,6 @@ void setup() {
     ,  NULL 
     ,  TaskCore0);
 
-  /*xTaskCreatePinnedToCore(
-    TaskSDFlush
-    ,  "Write Data to Card"
-    ,  2000 // Stack size
-    ,  NULL
-    ,  3  // Priority
-    ,  NULL 
-    ,  TaskCore0);*/
-
     xTaskCreatePinnedToCore(
     TaskLed
     ,  "LED"
@@ -378,9 +350,7 @@ void setup() {
   timerAlarmEnable(timer);
 
 }
-
-
-  
+ 
 //================================================================================================================================
 void loop()
 {
