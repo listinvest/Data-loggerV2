@@ -6,7 +6,7 @@
 // files are saves text files = DATANN.TXT
 // See ReadME and photos for additional hook up info
 
-const int SampleRate = 400; //Hz, Set sample rate here
+const int SampleRate = 1000; //Hz, Set sample rate here
 const int SampleLength = 10; //Seconds, Sample Length in Seconds
 
 //Use ESP32 duo core
@@ -28,11 +28,13 @@ int TotalCount = SampleLength * SampleRate;
 #include "freertos/event_groups.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
+//#if ENABLE_SOFTWARE_SPI_CLASS  // Must be set in SdFat/SdFatConfig.h
 
 #define LED_BUILTIN LED_BUILTIN //LED light for notification
 //------------------------------------------------------------------------------
 // SD file definitions
 const uint8_t sdChipSelect = 33;
+
 SdFat sd;
 SdFile file;
 File logfile;
@@ -42,10 +44,10 @@ struct Data_t {
   uint32_t usec; 
   float value1X;
   float value1Y;
-  float value1Z;
+  //float value1Z;
   float value2X;
   float value2Y;
-  float value2Z;
+  //float value2Z;
 } TX_Data_t, RX_Data_t;
 
 //------------------------------------------------------------------------------
@@ -121,10 +123,10 @@ void TaskGetData(void *pvParameters)  // This is a task.
     TX_Data_t.usec = micros();
     TX_Data_t.value1X = event.acceleration.x;
     TX_Data_t.value1Y = event.acceleration.y;
-    TX_Data_t.value1Z = event.acceleration.z;
+    //TX_Data_t.value1Z = event.acceleration.z;
     TX_Data_t.value2X = event2.acceleration.x;
     TX_Data_t.value2Y = event2.acceleration.y;
-    TX_Data_t.value2Z = event2.acceleration.z;
+    //TX_Data_t.value2Z = event2.acceleration.z;
     if(xQueueSend( DataQueue, ( void * ) &TX_Data_t, portMAX_DELAY ) != pdPASS )  //portMAX_DELAY
       {
         Serial.println("xQueueSend is not working"); 
@@ -152,14 +154,14 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       logfile.print(RX_Data_t.value1X,4);
       logfile.print(',');
       logfile.print(RX_Data_t.value1Y,4);
-      logfile.print(',');
-      logfile.print(RX_Data_t.value1Z,4);
+      //logfile.print(',');
+      //logfile.print(RX_Data_t.value1Z,4);
       logfile.print(',');
       logfile.print(RX_Data_t.value2X,4);
       logfile.print(',');
       logfile.print(RX_Data_t.value2Y,4);
-      logfile.print(',');
-      logfile.print(RX_Data_t.value2Z,4);
+      //logfile.print(',');
+      //logfile.print(RX_Data_t.value2Z,4);
       logfile.println(); 
       Count++;
       //Serial.println(Count); 
@@ -198,6 +200,7 @@ void TaskLed(void *pvParameters)
        
     if (xSemaphoreTake(ButtonSemaphore, portMAX_DELAY) == pdPASS) {
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    vTaskDelay( 10 ); 
     }
    }
 }
@@ -210,7 +213,7 @@ void setup() {
   Serial.begin(115200);
 
   //SPI
-  //SPI.beginTransaction(SPISettings(40000000, MSBFIRST, SPI_MODE0));
+  //SPI.beginTransaction(SPISettings(10000000, MSBFIRST, SPI_MODE2));
 
   //Queue Setup
   DataQueue = xQueueCreate(10, sizeof( Data_t ));
@@ -262,7 +265,7 @@ void setup() {
   lis2.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); 
 
   // SD CARD SETUP ====================================================================
-  // see if the card is present and can be initialized:  (Use highest SD clock possible, but lower if has error, 15 Mhz works, possible to go to to 25 Mhz if sample rate is low enough
+  // see if the card is present and can be initialized:  (Use highest SD clock possible, but lower if has error, 35 Mhz works)
   if (!sd.begin(sdChipSelect, SD_SCK_MHZ(35))) {
     Serial.println("Card init. failed!");
     while (1) yield(); 
@@ -282,7 +285,7 @@ void setup() {
   }
 
   // Create file and prepare it ============================================================
-  logfile = sd.open(filename, O_CREAT | O_WRITE);  
+  logfile = sd.open(filename, O_RDWR | O_CREAT | O_TRUNC); //O_CREAT | O_WRITE);  
   if( ! logfile ) {
     Serial.print("Couldnt create "); 
     Serial.println(filename);
@@ -297,30 +300,30 @@ void setup() {
   logfile.print("Sensor 1 X");
   logfile.print(",");
   logfile.print("Sensor 1 Y");
-  logfile.print(",");
-  logfile.print("Sensor 1 Z");
+  //logfile.print(",");
+  //logfile.print("Sensor 1 Z");
   logfile.print(",");
   logfile.print("Sensor 2 X");
   logfile.print(",");
   logfile.print("Sensor 2 Y");
-  logfile.print(",");
-  logfile.print("Sensor 2 Z");
+  //logfile.print(",");
+  //logfile.print("Sensor 2 Z");
   logfile.println();
 
   // Setup up Tasks and where to run ============================================================  
   // Now set up tasks to run independently.
   xTaskCreatePinnedToCore(
     TaskGetData
-    ,  "Get Data from Accel to Queue"   // A name just for humans
+    ,  "Grab Accel Data"   // A name just for humans
     ,  10000 // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
-    ,  4  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
     ,  TaskCore1);
 
   xTaskCreatePinnedToCore(
     TaskSDWrite
-    ,  "Get Data from Queue"
+    ,  "SD Write"
     ,  10000 // Stack size
     ,  NULL
     ,  3 // Priority
@@ -332,9 +335,9 @@ void setup() {
     ,  "LED"
     ,  2000 // Stack size
     ,  NULL
-    ,  3  // Priority
+    ,  1  // Priority
     ,  NULL 
-    ,  TaskCore0);  
+    ,  TaskCore1);  
   
 // Create Timer ===============================================================================
   // Use 1st timer of 4 (counted from zero).
