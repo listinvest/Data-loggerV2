@@ -5,9 +5,28 @@
 // Uses SPI for SD & Accels, hoping for 1000 Hz. sampling 
 // files are saves text files = DATANN.TXT
 // See ReadME and photos for additional hook up info
+ /* Connect the SD card to the following pins:
+ *
+ * SD Card | ESP32
+ *    D2       12
+ *    D3       13
+ *    CMD      15
+ *    VSS      GND
+ *    VDD      3.3V
+ *    CLK      14
+ *    VSS      GND
+ *    D0       2  (add 1K pull up after flashing)
+ *    D1       4
+*/
+ 
+//SPI3 / 
+//    CS      5
+//    SCK     18
+//    MISO/SDA   19
+//    MOSI/SDO    23
 
-const int SampleRate = 1000; //Hz, Set sample rate here
-const int SampleLength = 10; //Seconds, Sample Length in Seconds
+const int SampleRate = 500; //Hz, Set sample rate here
+const int SampleLength = 80; //Seconds, Sample Length in Seconds
 
 //Use ESP32 duo core
 const int TaskCore1  = 1;
@@ -16,8 +35,10 @@ int SampleInt = 1000000 / SampleRate;
 int TotalCount = SampleLength * SampleRate;
 
 //Libraries
+#include "FS.h"
+#include "SD_MMC.h"
 #include <SPI.h>
-#include "SdFat.h"
+//#include "SdFat.h"
 #include <Adafruit_LIS3DH.h>
 #include <Adafruit_Sensor.h>
 #include "stdio.h"
@@ -28,15 +49,14 @@ int TotalCount = SampleLength * SampleRate;
 #include "freertos/event_groups.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
-//#if ENABLE_SOFTWARE_SPI_CLASS  // Must be set in SdFat/SdFatConfig.h
 
-#define LED_BUILTIN LED_BUILTIN //LED light for notification
+#define ONE_BIT_MODE true //false is 4 bit mode, fastest
+
+//#define LED_BUILTIN LED_BUILTIN //LED light for notification
 //------------------------------------------------------------------------------
-// SD file definitions
-const uint8_t sdChipSelect = 33;
 
-SdFat sd;
-SdFile file;
+//SdFat sd;
+//SdFile file;
 File logfile;
 //------------------------------------------------------------------------------
 // data type for Queue item
@@ -50,24 +70,28 @@ struct Data_t {
   //float value2Z;
 } TX_Data_t, RX_Data_t;
 
+//char buffer[50];
+
+UBaseType_t uxHighWaterMark;
+
 //------------------------------------------------------------------------------
 // Accel Lis3dh definitions, SPI or I2C
-// hardware SPI 1 LIS3DH->Feather:  Power to Vin, Gnd to Gnd, SCL->SCK, SDA->MOSO, SDO->MOSI, CS->CS 14/15
+// hardware SPI 1 LIS3DH->Feather:  Power to Vin, Gnd to Gnd, SCL->SCK, SDA->MISO, SDO->MOSI, CS->CS 14/15
 // Sensor 1 Hardware SPI
 //Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS);
 // Sensor 2 Hardware SPI
 //Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH_CS2);
 
 // Used for software SPI
-#define LIS3DH_CLK 21
-#define LIS3DH_MISO 33
-#define LIS3DH_MOSI 32
-#define LIS3DH2_CLK 25
-#define LIS3DH2_MISO 26
-#define LIS3DH2_MOSI 4
+#define LIS3DH_CLK 18
+#define LIS3DH_MISO 19
+#define LIS3DH_MOSI 23
+#define LIS3DH2_CLK 18
+#define LIS3DH2_MISO 19
+#define LIS3DH2_MOSI 23
 // Used for hardware & software SPI
-#define LIS3DH_CS 14   //ESP32: 14/A6 , Cortex m0: 5, Use for upper accel (Sensor 1!!!) = hbar, seatpost, etc.
-#define LIS3DH2_CS 15  //ESP32: 15/A8, Cortex m0: 9, Use for lower accel (Sensor 2!!!) = axles, etc. 
+#define LIS3DH_CS 5    //ESP32: 14/A6 , Cortex m0: 5, Use for upper accel (Sensor 1!!!) = hbar, seatpost, etc.
+#define LIS3DH2_CS 17  //ESP32: 15/A8, Cortex m0: 9, Use for lower accel (Sensor 2!!!) = axles, etc. 
 
 // software SPI
 Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS, LIS3DH_MOSI, LIS3DH_MISO, LIS3DH_CLK);
@@ -86,6 +110,7 @@ hw_timer_t * timer = NULL;  //create timer handler
 
 //Declare Queue data type for FreeRTOS
 QueueHandle_t DataQueue; // 
+//RingbufHandle_t buf_handle;
 
 //ISR tools
 //Create Interrupt Semaphores
@@ -127,10 +152,16 @@ void TaskGetData(void *pvParameters)  // This is a task.
     TX_Data_t.value2X = event2.acceleration.x;
     TX_Data_t.value2Y = event2.acceleration.y;
     //TX_Data_t.value2Z = event2.acceleration.z;
+    //uxHighWaterMark = uxTaskGetStackHighWaterMark( NULL );
+    //Serial.println(uxHighWaterMark);
     if(xQueueSend( DataQueue, ( void * ) &TX_Data_t, portMAX_DELAY ) != pdPASS )  //portMAX_DELAY
       {
         Serial.println("xQueueSend is not working"); 
       }
+    /*if(UBaseType_t res =  xRingbufferSend(buf_handle, ( void * ) &TX_Data_t, sizeof(Data_t), portMAX_DELAY) != pdPASS)
+      {
+        printf("Failed to send in Ring Buffer");
+      }*/
     }
   }
   vTaskDelete( NULL );
@@ -141,6 +172,7 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
   (void) pvParameters;
   
   //struct Data_t *RCV_Data; 
+  //size_t RX_Data_t; 
   
   for (;;)
   {
@@ -149,6 +181,22 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       {
         Serial.println("xQueueRecieve is not working");
       }
+      /*//Receive an item from no-split ring buffer
+      if( xRingbufferReceive(buf_handle, &( RX_Data_t ), portMAX_DELAY) != pdPASS );
+
+    //Check received item
+    if (RX_Data_t != NULL) {
+        //Print item
+        for (int i = 0; i < item_size; i++) {
+            printf("%c", item[i]);
+        }
+        printf("\n");
+        //Return Item
+        //vRingbufferReturnItem(buf_handle, (void *)item);
+    } else {
+        //Failed to receive item
+        printf("Failed to receive item\n");
+    }*/
       logfile.print(RX_Data_t.usec);
       logfile.print(',');
       logfile.print(RX_Data_t.value1X,4);
@@ -162,20 +210,25 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       logfile.print(RX_Data_t.value2Y,4);
       //logfile.print(',');
       //logfile.print(RX_Data_t.value2Z,4);
+      //sprintf(buffer, "%u, %f, %f, %f, %f", RX_Data_t.usec, RX_Data_t.value1X, RX_Data_t.value1Y, RX_Data_t.value2X, RX_Data_t.value2Y);
+      //logfile.println(buffer); 
       logfile.println(); 
+      //uxHighWaterMark = uxTaskGetStackHighWaterMark( NULL );
+      //Serial.println(uxHighWaterMark);
       Count++;
       //Serial.println(Count); 
       if ( Count == TotalCount )
         {
           logfile.close(); 
+          
           vTaskDelay ( 8000 / portTICK_PERIOD_MS ); 
           Serial.println("All done here"); 
           vTaskDelay( 20000000 / portTICK_PERIOD_MS );
           //vTaskSuspendAll(); 
         }
 
-      //uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
-      //Serial.println(FreeSpace);
+      uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
+      Serial.println(FreeSpace);
       }
    vTaskDelete( NULL ); 
 }
@@ -199,7 +252,7 @@ void TaskLed(void *pvParameters)
         }  
        
     if (xSemaphoreTake(ButtonSemaphore, portMAX_DELAY) == pdPASS) {
-    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    //digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
     vTaskDelay( 10 ); 
     }
    }
@@ -212,8 +265,12 @@ void setup() {
   // initialize serial communication at 115200 bits per second:
   Serial.begin(115200);
 
-  //SPI
-  //SPI.beginTransaction(SPISettings(10000000, MSBFIRST, SPI_MODE2));
+// For SDMMC hookup need to pull certain channels high during startup
+    pinMode(2, INPUT_PULLUP);
+    pinMode(4, INPUT_PULLUP);
+    pinMode(12, INPUT_PULLUP);
+    pinMode(13, INPUT_PULLUP);
+    pinMode(15, INPUT_PULLUP);
 
   //Queue Setup
   DataQueue = xQueueCreate(10, sizeof( Data_t ));
@@ -221,9 +278,15 @@ void setup() {
      Serial.println("Error Creating the Queue");
    }
 
+  /*buf_handle = xRingbufferCreate(1028, RINGBUF_TYPE_NOSPLIT);
+  if (buf_handle == NULL){
+        printf("Failed to create ring buffer\n");
+    }*/
+
+
   //============================================================================================================
   //Outputs, Pins, Buttons, Etc. 
-  pinMode(LED_BUILTIN, OUTPUT);  //set Built in LED to show writing on SD Card
+  //pinMode(LED_BUILTIN, OUTPUT);  //set Built in LED to show writing on SD Card
   pinMode(27, INPUT); //button to turn recording on/off, In [HIGH]
 
   //Create button Interrupt Semaphore
@@ -239,9 +302,6 @@ void setup() {
   // Create semaphore for counting samples
   CountSemaphore = xSemaphoreCreateBinary(); 
 
-  // Create semaphore for Flush samples
-  //FlushSemaphore = xSemaphoreCreateCounting( Flush, 0 ); 
-  
   //ACCEL Setup and RUN
   if (! lis.begin(0x18)) {   // change this to 0x19 for alternative i2c address
   Serial.println("Couldnt start");
@@ -266,7 +326,7 @@ void setup() {
 
   // SD CARD SETUP ====================================================================
   // see if the card is present and can be initialized:  (Use highest SD clock possible, but lower if has error, 35 Mhz works)
-  if (!sd.begin(sdChipSelect, SD_SCK_MHZ(35))) {
+  if (!SD_MMC.begin("/sdcard", ONE_BIT_MODE)) {
     Serial.println("Card init. failed!");
     while (1) yield(); 
   }
@@ -279,13 +339,13 @@ void setup() {
     filename[5] = '0' + i/10;
     filename[6] = '0' + i%10;
     // create if does not exist, do not open existing, write, sync after write
-    if (! sd.exists(filename)) {
+    if (! SD_MMC.exists(filename)) {
       break;
     }
   }
 
   // Create file and prepare it ============================================================
-  logfile = sd.open(filename, O_RDWR | O_CREAT | O_TRUNC); //O_CREAT | O_WRITE);  
+  logfile = SD_MMC.open(filename, FILE_WRITE); //O_RDWR | O_CREAT | O_TRUNC); //O_CREAT | O_WRITE);  
   if( ! logfile ) {
     Serial.print("Couldnt create "); 
     Serial.println(filename);
@@ -315,7 +375,7 @@ void setup() {
   xTaskCreatePinnedToCore(
     TaskGetData
     ,  "Grab Accel Data"   // A name just for humans
-    ,  10000 // This stack size can be checked & adjusted by reading the Stack Highwater
+    ,  15000 // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
     ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
     ,  NULL 
@@ -324,7 +384,7 @@ void setup() {
   xTaskCreatePinnedToCore(
     TaskSDWrite
     ,  "SD Write"
-    ,  10000 // Stack size
+    ,  15000 // Stack size
     ,  NULL
     ,  3 // Priority
     ,  NULL 
@@ -333,7 +393,7 @@ void setup() {
     xTaskCreatePinnedToCore(
     TaskLed
     ,  "LED"
-    ,  2000 // Stack size
+    ,  10000 // Stack size
     ,  NULL
     ,  1  // Priority
     ,  NULL 
