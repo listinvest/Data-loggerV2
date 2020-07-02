@@ -5,27 +5,9 @@
 // Uses SPI for SD & Accels, hoping for 1000 Hz. sampling 
 // files are saves text files = DATANN.TXT
 // See ReadME and photos for additional hook up info
- /* Connect the SD card to the following pins:
- *
- * SD Card | ESP32
- *    D2       12
- *    D3       13
- *    CMD      15
- *    VSS      GND
- *    VDD      3.3V
- *    CLK      14
- *    VSS      GND
- *    D0       2  (add 1K pull up after flashing)
- *    D1       4
-*/
- 
-//SPI3 / 
-//    CS      5
-//    SCK     18
-//    MISO/SDA   19
-//    MOSI/SDO    23
 
-const int SampleRate = 500; //Hz, Set sample rate here
+
+const int SampleRate = 1000; //Hz, Set sample rate here
 const int SampleLength = 80; //Seconds, Sample Length in Seconds
 
 //Use ESP32 duo core
@@ -54,9 +36,7 @@ int TotalCount = SampleLength * SampleRate;
 
 //#define LED_BUILTIN LED_BUILTIN //LED light for notification
 //------------------------------------------------------------------------------
-
-//SdFat sd;
-//SdFile file;
+//File callout for SDMMC
 File logfile;
 //------------------------------------------------------------------------------
 // data type for Queue item
@@ -64,13 +44,11 @@ struct Data_t {
   uint32_t usec; 
   float value1X;
   float value1Y;
-  //float value1Z;
+  float value1Z;
   float value2X;
   float value2Y;
-  //float value2Z;
+  float value2Z;
 } TX_Data_t, RX_Data_t;
-
-//char buffer[50];
 
 UBaseType_t uxHighWaterMark;
 
@@ -82,6 +60,12 @@ UBaseType_t uxHighWaterMark;
 // Sensor 2 Hardware SPI
 //Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH_CS2);
 
+// Connect the SD card to the following pins:
+// SD Card | ESP32, DS->12 D3->13 CMD->15 VSS->GND VDD->3.3V CLK->14 VSS->GND D0->2 D1->4
+ 
+//SPI3 / VSPI 
+// CS = 5 / SCK = 18 / MISO/SDA = 19 / MOSI/SDO = 23
+
 // Used for software SPI
 #define LIS3DH_CLK 18
 #define LIS3DH_MISO 19
@@ -90,12 +74,11 @@ UBaseType_t uxHighWaterMark;
 #define LIS3DH2_MISO 19
 #define LIS3DH2_MOSI 23
 // Used for hardware & software SPI
-#define LIS3DH_CS 5    //ESP32: 14/A6 , Cortex m0: 5, Use for upper accel (Sensor 1!!!) = hbar, seatpost, etc.
-#define LIS3DH2_CS 17  //ESP32: 15/A8, Cortex m0: 9, Use for lower accel (Sensor 2!!!) = axles, etc. 
+#define LIS3DH_CS 5    //ESP32: Use for upper accel (Sensor 1!!!) = hbar, seatpost, etc.
+#define LIS3DH2_CS 17  //ESP32: Use for lower accel (Sensor 2!!!) = axles, etc. 
 
 // software SPI
 Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS, LIS3DH_MOSI, LIS3DH_MISO, LIS3DH_CLK);
-// software SPI 2 
 Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH2_CS, LIS3DH2_MOSI, LIS3DH2_MISO, LIS3DH2_CLK);
 
 //------------------------------------------------------------------------------
@@ -148,10 +131,10 @@ void TaskGetData(void *pvParameters)  // This is a task.
     TX_Data_t.usec = micros();
     TX_Data_t.value1X = event.acceleration.x;
     TX_Data_t.value1Y = event.acceleration.y;
-    //TX_Data_t.value1Z = event.acceleration.z;
+    TX_Data_t.value1Z = event.acceleration.z;
     TX_Data_t.value2X = event2.acceleration.x;
     TX_Data_t.value2Y = event2.acceleration.y;
-    //TX_Data_t.value2Z = event2.acceleration.z;
+    TX_Data_t.value2Z = event2.acceleration.z;
     //uxHighWaterMark = uxTaskGetStackHighWaterMark( NULL );
     //Serial.println(uxHighWaterMark);
     if(xQueueSend( DataQueue, ( void * ) &TX_Data_t, portMAX_DELAY ) != pdPASS )  //portMAX_DELAY
@@ -202,16 +185,14 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
       logfile.print(RX_Data_t.value1X,4);
       logfile.print(',');
       logfile.print(RX_Data_t.value1Y,4);
-      //logfile.print(',');
-      //logfile.print(RX_Data_t.value1Z,4);
+      logfile.print(',');
+      logfile.print(RX_Data_t.value1Z,4);
       logfile.print(',');
       logfile.print(RX_Data_t.value2X,4);
       logfile.print(',');
       logfile.print(RX_Data_t.value2Y,4);
-      //logfile.print(',');
-      //logfile.print(RX_Data_t.value2Z,4);
-      //sprintf(buffer, "%u, %f, %f, %f, %f", RX_Data_t.usec, RX_Data_t.value1X, RX_Data_t.value1Y, RX_Data_t.value2X, RX_Data_t.value2Y);
-      //logfile.println(buffer); 
+      logfile.print(',');
+      logfile.print(RX_Data_t.value2Z,4);
       logfile.println(); 
       //uxHighWaterMark = uxTaskGetStackHighWaterMark( NULL );
       //Serial.println(uxHighWaterMark);
@@ -227,8 +208,8 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
           //vTaskSuspendAll(); 
         }
 
-      uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
-      Serial.println(FreeSpace);
+      //uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
+      //Serial.println(FreeSpace);
       }
    vTaskDelete( NULL ); 
 }
@@ -287,7 +268,7 @@ void setup() {
   //============================================================================================================
   //Outputs, Pins, Buttons, Etc. 
   //pinMode(LED_BUILTIN, OUTPUT);  //set Built in LED to show writing on SD Card
-  pinMode(27, INPUT); //button to turn recording on/off, In [HIGH]
+  pinMode(34, INPUT); //button to turn recording on/off, In [HIGH]
 
   //Create button Interrupt Semaphore
   ButtonSemaphore = xSemaphoreCreateBinary();
@@ -360,14 +341,14 @@ void setup() {
   logfile.print("Sensor 1 X");
   logfile.print(",");
   logfile.print("Sensor 1 Y");
-  //logfile.print(",");
-  //logfile.print("Sensor 1 Z");
+  logfile.print(",");
+  logfile.print("Sensor 1 Z");
   logfile.print(",");
   logfile.print("Sensor 2 X");
   logfile.print(",");
   logfile.print("Sensor 2 Y");
-  //logfile.print(",");
-  //logfile.print("Sensor 2 Z");
+  logfile.print(",");
+  logfile.print("Sensor 2 Z");
   logfile.println();
 
   // Setup up Tasks and where to run ============================================================  
