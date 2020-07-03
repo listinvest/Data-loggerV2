@@ -7,8 +7,8 @@
 // See ReadME and photos for additional hook up info
 
 
-const int SampleRate = 1000; //Hz, Set sample rate here
-const int SampleLength = 80; //Seconds, Sample Length in Seconds
+const int SampleRate = 1500; //Hz, Set sample rate here
+const int SampleLength = 10; //Seconds, Sample Length in Seconds
 
 //Use ESP32 duo core
 const int TaskCore1  = 1;
@@ -20,7 +20,6 @@ int TotalCount = SampleLength * SampleRate;
 #include "FS.h"
 #include "SD_MMC.h"
 #include <SPI.h>
-//#include "SdFat.h"
 #include <Adafruit_LIS3DH.h>
 #include <Adafruit_Sensor.h>
 #include "stdio.h"
@@ -34,7 +33,6 @@ int TotalCount = SampleLength * SampleRate;
 
 #define ONE_BIT_MODE true //false is 4 bit mode, fastest
 
-//#define LED_BUILTIN LED_BUILTIN //LED light for notification
 //------------------------------------------------------------------------------
 //File callout for SDMMC
 File logfile;
@@ -62,10 +60,8 @@ UBaseType_t uxHighWaterMark;
 
 // Connect the SD card to the following pins:
 // SD Card | ESP32, DS->12 D3->13 CMD->15 VSS->GND VDD->3.3V CLK->14 VSS->GND D0->2 D1->4
- 
 //SPI3 / VSPI 
 // CS = 5 / SCK = 18 / MISO/SDA = 19 / MOSI/SDO = 23
-
 // Used for software SPI
 #define LIS3DH_CLK 18
 #define LIS3DH_MISO 19
@@ -153,9 +149,6 @@ void TaskGetData(void *pvParameters)  // This is a task.
 void TaskSDWrite(void *pvParameters)  // This is a task.
 {
   (void) pvParameters;
-  
-  //struct Data_t *RCV_Data; 
-  //size_t RX_Data_t; 
   
   for (;;)
   {
@@ -246,12 +239,12 @@ void setup() {
   // initialize serial communication at 115200 bits per second:
   Serial.begin(115200);
 
-// For SDMMC hookup need to pull certain channels high during startup
-    pinMode(2, INPUT_PULLUP);
-    pinMode(4, INPUT_PULLUP);
-    pinMode(12, INPUT_PULLUP);
-    pinMode(13, INPUT_PULLUP);
-    pinMode(15, INPUT_PULLUP);
+  // For SDMMC hookup need to pull certain channels high during startup
+  pinMode(2, INPUT_PULLUP);
+  pinMode(4, INPUT_PULLUP);
+  pinMode(12, INPUT_PULLUP);
+  pinMode(13, INPUT_PULLUP);
+  pinMode(15, INPUT_PULLUP);
 
   //Queue Setup
   DataQueue = xQueueCreate(10, sizeof( Data_t ));
@@ -274,7 +267,7 @@ void setup() {
   ButtonSemaphore = xSemaphoreCreateBinary();
   if (ButtonSemaphore != NULL) {
     // Attach interrupt for Arduino digital pin
-    attachInterrupt(digitalPinToInterrupt(27), ButtonISR, FALLING);
+    attachInterrupt(digitalPinToInterrupt(34), ButtonISR, FALLING);
   }
 
   // Create semaphore to inform us when the timer has fired
@@ -326,7 +319,7 @@ void setup() {
   }
 
   // Create file and prepare it ============================================================
-  logfile = SD_MMC.open(filename, FILE_WRITE); //O_RDWR | O_CREAT | O_TRUNC); //O_CREAT | O_WRITE);  
+  logfile = SD_MMC.open(filename, FILE_WRITE); 
   if( ! logfile ) {
     Serial.print("Couldnt create "); 
     Serial.println(filename);
