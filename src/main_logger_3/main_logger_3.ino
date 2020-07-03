@@ -6,10 +6,11 @@
 // Record reliably up to 1000 Hz.  
 // files are saved in .CSV or .TXT format, file name scheme is = DATANN.CSV or .TXT
 // See ReadME and photos for additional hook up info
+// You cannot compile and upload with SD card in slot!
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 const int SampleRate = 1000; //Hz, Set sample rate here                    +
-const int SampleLength = 10; //Seconds, How long to record                +
+const int SampleLength = 20; //Seconds, How long to record                +
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 //Use ESP32 duo core
@@ -93,6 +94,8 @@ SemaphoreHandle_t timerSemaphore;
 SemaphoreHandle_t ButtonSemaphore;
 SemaphoreHandle_t CountSemaphore; 
 int Count = 0; 
+int LED = 32; 
+int BUTTON = 34; 
 
 /////////////////////////////////////////////////////////////////////////////////////
 void IRAM_ATTR vTimerISR()  //Timer ISR 
@@ -208,7 +211,7 @@ void TaskLed(void *pvParameters)
   for (;;) 
     {
     // Take the semaphore.
-    if( xSemaphoreTake(CountSemaphore, portMAX_DELAY) == pdPASS )
+    /*if( xSemaphoreTake(CountSemaphore, portMAX_DELAY) == pdPASS )
         {
         //vTaskSuspend( (void *) &TaskGetData );
         //vTaskSuspend( (void *) &TaskSDWrite );
@@ -216,11 +219,13 @@ void TaskLed(void *pvParameters)
         //Serial.println("All done here");
         //vTaskDelay( 20000000 / portTICK_PERIOD_MS );
         //vTaskSuspendAll(); 
-        }  
+        }  */
        
-    if (xSemaphoreTake(ButtonSemaphore, portMAX_DELAY) == pdPASS) {
-    //digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
-    vTaskDelay( 10 ); 
+    if (xSemaphoreTake(ButtonSemaphore, portMAX_DELAY) == pdPASS) 
+    {
+      digitalWrite(LED, !digitalRead(LED));
+      Serial.println("Button Pressed"); 
+      vTaskDelay( 1200 / portTICK_PERIOD_MS ); 
     }
    }
 }
@@ -253,14 +258,15 @@ void setup() {
 
   //============================================================================================================
   //Outputs, Pins, Buttons, Etc. 
-  //pinMode(LED_BUILTIN, OUTPUT);  //set Built in LED to show writing on SD Card
-  pinMode(34, INPUT); //button to turn recording on/off, In [HIGH]
+  pinMode(LED, OUTPUT);  //set Built in LED to show writing on SD Card
+  pinMode(BUTTON, INPUT); //button to turn recording on/off, In [HIGH]
+  digitalWrite(LED, HIGH); 
 
   //Create button Interrupt Semaphore
   ButtonSemaphore = xSemaphoreCreateBinary();
   if (ButtonSemaphore != NULL) {
     // Attach interrupt for Arduino digital pin
-    attachInterrupt(digitalPinToInterrupt(34), ButtonISR, FALLING);
+    attachInterrupt(digitalPinToInterrupt(BUTTON), ButtonISR, FALLING);
   }
 
   // Create semaphore to inform us when the timer has fired
@@ -312,7 +318,7 @@ void setup() {
   }
 
   // Create file and prepare it ============================================================
-  logfile = SD_MMC.open(filename, FILE_WRITE); // O_WRITE | O_CREAT
+  logfile = SD_MMC.open(filename, FILE_WRITE); // O_CREAT | O_WRITE //FILE_WRITE
   if( ! logfile ) {
     Serial.print("Couldnt create "); 
     Serial.println(filename);
