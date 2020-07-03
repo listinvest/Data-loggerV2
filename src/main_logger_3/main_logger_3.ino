@@ -1,14 +1,16 @@
 // Data logger:  For measuring acceleration from LIS3DH/s
-// Hardware:  Adafruit ESP32, Adalogger feather+RTC, 2x LIS3DH accels
+// Hardware:  ESP32 dev Board Kit C, Micro SD reader, 2x LIS3DH accels
 // Created:  May 12 2020
 // Updated:
-// Uses SPI for SD & Accels, hoping for 1000 Hz. sampling 
-// files are saves text files = DATANN.TXT
+// Uses SPI for Accels, SDMMC for SD
+// Record reliably up to 1000 Hz.  
+// files are saved in .CSV or .TXT format, file name scheme is = DATANN.CSV or .TXT
 // See ReadME and photos for additional hook up info
 
-
-const int SampleRate = 1500; //Hz, Set sample rate here
-const int SampleLength = 10; //Seconds, Sample Length in Seconds
+//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+const int SampleRate = 1000; //Hz, Set sample rate here                    +
+const int SampleLength = 10; //Seconds, How long to record                +
+//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 //Use ESP32 duo core
 const int TaskCore1  = 1;
@@ -31,7 +33,7 @@ int TotalCount = SampleLength * SampleRate;
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 
-#define ONE_BIT_MODE true //false is 4 bit mode, fastest
+#define ONE_BIT_MODE true //true = 1 bit mode, 4 bit mode is faster (false) but never got to work
 
 //------------------------------------------------------------------------------
 //File callout for SDMMC
@@ -48,20 +50,14 @@ struct Data_t {
   float value2Z;
 } TX_Data_t, RX_Data_t;
 
-UBaseType_t uxHighWaterMark;
+UBaseType_t uxHighWaterMark;  // Use for debug and reviewing stack height limits
 
 //------------------------------------------------------------------------------
-// Accel Lis3dh definitions, SPI or I2C
-// hardware SPI 1 LIS3DH->Feather:  Power to Vin, Gnd to Gnd, SCL->SCK, SDA->MISO, SDO->MOSI, CS->CS 14/15
-// Sensor 1 Hardware SPI
-//Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS);
-// Sensor 2 Hardware SPI
-//Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH_CS2);
-
+// Accel Lis3dh definitions, SPI 
 // Connect the SD card to the following pins:
 // SD Card | ESP32, DS->12 D3->13 CMD->15 VSS->GND VDD->3.3V CLK->14 VSS->GND D0->2 D1->4
-//SPI3 / VSPI 
-// CS = 5 / SCK = 18 / MISO/SDA = 19 / MOSI/SDO = 23
+// Power to Vin, Gnd to Gnd, SCL->SCK, SDA->MISO, SDO->MOSI, CS->CS 
+//SPI3 / VSPI / CS = 5 / SCK = 18 / MISO/SDA = 19 / MOSI/SDO = 23
 // Used for software SPI
 #define LIS3DH_CLK 18
 #define LIS3DH_MISO 19
@@ -97,9 +93,6 @@ SemaphoreHandle_t timerSemaphore;
 SemaphoreHandle_t ButtonSemaphore;
 SemaphoreHandle_t CountSemaphore; 
 int Count = 0; 
-int G = 0;
-int H = 0; 
-int F = 0;
 
 /////////////////////////////////////////////////////////////////////////////////////
 void IRAM_ATTR vTimerISR()  //Timer ISR 
@@ -175,17 +168,17 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
     }*/
       logfile.print(RX_Data_t.usec);
       logfile.print(',');
-      logfile.print(RX_Data_t.value1X,4);
+      logfile.print(RX_Data_t.value1X,5);
       logfile.print(',');
-      logfile.print(RX_Data_t.value1Y,4);
+      logfile.print(RX_Data_t.value1Y,5);
       logfile.print(',');
-      logfile.print(RX_Data_t.value1Z,4);
+      logfile.print(RX_Data_t.value1Z,5);
       logfile.print(',');
-      logfile.print(RX_Data_t.value2X,4);
+      logfile.print(RX_Data_t.value2X,5);
       logfile.print(',');
-      logfile.print(RX_Data_t.value2Y,4);
+      logfile.print(RX_Data_t.value2Y,5);
       logfile.print(',');
-      logfile.print(RX_Data_t.value2Z,4);
+      logfile.print(RX_Data_t.value2Z,5);
       logfile.println(); 
       //uxHighWaterMark = uxTaskGetStackHighWaterMark( NULL );
       //Serial.println(uxHighWaterMark);
@@ -197,7 +190,7 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
           
           vTaskDelay ( 8000 / portTICK_PERIOD_MS ); 
           Serial.println("All done here"); 
-          vTaskDelay( 20000000 / portTICK_PERIOD_MS );
+          vTaskDelay( 20000000 / portTICK_PERIOD_MS ); // Just delay forever essentially
           //vTaskSuspendAll(); 
         }
 
@@ -288,8 +281,8 @@ void setup() {
   while (1) yield();
   }
   Serial.println("LIS3DH Sensor 2 found!");
-  Serial.println(SampleInt); //,"Sample time interval");
-  Serial.println(TotalCount); //,"Total # of samples");
+  Serial.print("Sample Interval time (uS):"); Serial.println(SampleInt); 
+  Serial.print("Total # of samples:"); Serial.println(TotalCount); 
   
   // Set accel range  
   lis.setRange(LIS3DH_RANGE_16_G);   // 2, 4, 8 or 16 G!
@@ -319,14 +312,13 @@ void setup() {
   }
 
   // Create file and prepare it ============================================================
-  logfile = SD_MMC.open(filename, FILE_WRITE); 
+  logfile = SD_MMC.open(filename, FILE_WRITE); // O_WRITE | O_CREAT
   if( ! logfile ) {
     Serial.print("Couldnt create "); 
     Serial.println(filename);
     while (1) yield(); 
   }
-  Serial.print("Writing to "); 
-  Serial.println(filename);
+  Serial.print("Writing to "); Serial.println(filename);
 
   //Column labels
   logfile.print("Time uS"); 
