@@ -10,7 +10,7 @@
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 const int SampleRate = 1000; //Hz, Set sample rate here                    +
-const int SampleLength = 20; //Seconds, How long to record                +
+const int SampleLength = 10; //Seconds, How long to record                +
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 //Use ESP32 duo core
@@ -59,7 +59,7 @@ UBaseType_t uxHighWaterMark;  // Use for debug and reviewing stack height limits
 // SD Card | ESP32, DS->12 D3->13 CMD->15 VSS->GND VDD->3.3V CLK->14 VSS->GND D0->2 D1->4
 // Power to Vin, Gnd to Gnd, SCL->SCK, SDA->MISO, SDO->MOSI, CS->CS 
 //SPI3 / VSPI / CS = 5 / SCK = 18 / MISO/SDA = 19 / MOSI/SDO = 23
-// Used for software SPI
+// Used for SPI3/VSPI
 #define LIS3DH_CLK 18
 #define LIS3DH_MISO 19
 #define LIS3DH_MOSI 23
@@ -70,7 +70,7 @@ UBaseType_t uxHighWaterMark;  // Use for debug and reviewing stack height limits
 #define LIS3DH_CS 5    //ESP32: Use for upper accel (Sensor 1!!!) = hbar, seatpost, etc.
 #define LIS3DH2_CS 17  //ESP32: Use for lower accel (Sensor 2!!!) = axles, etc. 
 
-// software SPI
+// Selct Pins
 Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS, LIS3DH_MOSI, LIS3DH_MISO, LIS3DH_CLK);
 Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH2_CS, LIS3DH2_MOSI, LIS3DH2_MISO, LIS3DH2_CLK);
 
@@ -79,6 +79,9 @@ Adafruit_LIS3DH lis2 = Adafruit_LIS3DH(LIS3DH2_CS, LIS3DH2_MOSI, LIS3DH2_MISO, L
 void TaskLed( void *pvParamaters );
 void TaskGetData( void *pvParameters );
 void TaskSDWrite( void *pvParameters );
+TaskHandle_t xGetData;
+TaskHandle_t xSDWrite;
+TaskHandle_t xLed; 
 //------------------------------------------------------------------------------
 
 //Hardware Timer
@@ -92,23 +95,22 @@ QueueHandle_t DataQueue; //
 //Create Interrupt Semaphores
 SemaphoreHandle_t timerSemaphore; 
 SemaphoreHandle_t ButtonSemaphore;
-SemaphoreHandle_t CountSemaphore; 
 int Count = 0; 
 int LED = 32; 
 int BUTTON = 34; 
 
-/////////////////////////////////////////////////////////////////////////////////////
+//------------------------------------------------------------------------------
 void IRAM_ATTR vTimerISR()  //Timer ISR 
   {
   xSemaphoreGiveFromISR(timerSemaphore, NULL);
   }
 //------------------------------------------------------------------------------
-void IRAM_ATTR ButtonISR() 
+void IRAM_ATTR ButtonISR() //Gives permission from button interrupt
   {
-  xSemaphoreGiveFromISR(ButtonSemaphore, NULL); //Gives permission from button interrupt
+  xSemaphoreGiveFromISR(ButtonSemaphore, NULL); 
   }
 //------------------------------------------------------------------------------
-void TaskGetData(void *pvParameters)  // This is a task.
+void TaskGetData(void *pvParameters)  // Get Data from Sensors Task
 {
     (void) pvParameters;
 
@@ -142,7 +144,7 @@ void TaskGetData(void *pvParameters)  // This is a task.
   vTaskDelete( NULL );
 }
 //------------------------------------------------------------------------------
-void TaskSDWrite(void *pvParameters)  // This is a task.
+void TaskSDWrite(void *pvParameters)  // Write Data to SD card
 {
   (void) pvParameters;
   
@@ -191,43 +193,38 @@ void TaskSDWrite(void *pvParameters)  // This is a task.
         {
           logfile.close(); 
           
-          vTaskDelay ( 8000 / portTICK_PERIOD_MS ); 
-          Serial.println("All done here"); 
+          vTaskDelay ( 8000 / portTICK_PERIOD_MS ); // Adding delay just to give SD card time close but may not be needed
+          Serial.println("Data Saved to SD Card and Closed"); 
           vTaskDelay( 20000000 / portTICK_PERIOD_MS ); // Just delay forever essentially
           //vTaskSuspendAll(); 
         }
 
-      //uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); 
+      //uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); //Use if need to evaluate SD write and queue availability
       //Serial.println(FreeSpace);
       }
    vTaskDelete( NULL ); 
 }
 
 //------------------------------------------------------------------------------
-void TaskLed(void *pvParameters)
+void TaskLed(void *pvParameters)  //Always on Task, start task and Led notifications
 {
   (void) pvParameters;
 
+  // Start off Suspended, no recording, only runs once here
+  vTaskSuspend( xGetData );
+  vTaskSuspend( xSDWrite );
+
   for (;;) 
     {
-    // Take the semaphore.
-    /*if( xSemaphoreTake(CountSemaphore, portMAX_DELAY) == pdPASS )
-        {
-        //vTaskSuspend( (void *) &TaskGetData );
-        //vTaskSuspend( (void *) &TaskSDWrite );
-        //Serial.println("Recieved count semaphore"); 
-        //Serial.println("All done here");
-        //vTaskDelay( 20000000 / portTICK_PERIOD_MS );
-        //vTaskSuspendAll(); 
-        }  */
-       
-    if (xSemaphoreTake(ButtonSemaphore, portMAX_DELAY) == pdPASS) 
-    {
+     if (xSemaphoreTake(ButtonSemaphore, portMAX_DELAY) == pdPASS) 
+      {
       digitalWrite(LED, !digitalRead(LED));
       Serial.println("Button Pressed"); 
       vTaskDelay( 1200 / portTICK_PERIOD_MS ); 
+      vTaskResume( xGetData );
+      vTaskResume( xSDWrite ); 
+      } 
     }
-   }
 }
 //===================================================================================================================
 //===================================================================================================================
@@ -255,34 +252,28 @@ void setup() {
         printf("Failed to create ring buffer\n");
     }*/
 
-
   //============================================================================================================
   //Outputs, Pins, Buttons, Etc. 
-  pinMode(LED, OUTPUT);  //set Built in LED to show writing on SD Card
-  pinMode(BUTTON, INPUT); //button to turn recording on/off, In [HIGH]
-  digitalWrite(LED, HIGH); 
+  pinMode(LED, OUTPUT);  // Turn on LED for notification
+  pinMode(BUTTON, INPUT); //button to turn recording on/off, Pulled HIGH to begin
+  digitalWrite(LED, HIGH); // Turn LED on
 
-  //Create button Interrupt Semaphore
-  ButtonSemaphore = xSemaphoreCreateBinary();
+  ButtonSemaphore = xSemaphoreCreateBinary();  //Create button Interrupt Semaphore
   if (ButtonSemaphore != NULL) {
     // Attach interrupt for Arduino digital pin
     attachInterrupt(digitalPinToInterrupt(BUTTON), ButtonISR, FALLING);
   }
 
-  // Create semaphore to inform us when the timer has fired
-  timerSemaphore = xSemaphoreCreateBinary();
-
-  // Create semaphore for counting samples
-  CountSemaphore = xSemaphoreCreateBinary(); 
+  timerSemaphore = xSemaphoreCreateBinary();  // Create semaphore to inform us when the timer has fired
 
   //ACCEL Setup and RUN
-  if (! lis.begin(0x18)) {   // change this to 0x19 for alternative i2c address
+  if (! lis.begin(0x18)) {   // Sensor 1, change this to 0x19 for alternative i2c address
   Serial.println("Couldnt start");
   while (1) yield();
   }
   Serial.println("LIS3DH Sensor 1 found!");
 
-  if (! lis2.begin(0x19)) {   // Sensor 2, SDO is 3V
+  if (! lis2.begin(0x19)) {   // Sensor 2
   Serial.println("Couldnt start Sensor 2");
   while (1) yield();
   }
@@ -290,23 +281,22 @@ void setup() {
   Serial.print("Sample Interval time (uS):"); Serial.println(SampleInt); 
   Serial.print("Total # of samples:"); Serial.println(TotalCount); 
   
-  // Set accel range  
-  lis.setRange(LIS3DH_RANGE_16_G);   // 2, 4, 8 or 16 G!
+  // Set accel range  2, 4, 8 or 16 G!
+  lis.setRange(LIS3DH_RANGE_16_G);   
   lis2.setRange(LIS3DH_RANGE_16_G);
-  // Set DataRate
-  lis.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); //OPTIONS:  LIS3DH_DATARATE_400_HZ, LIS3DH_DATARATE_LOWPOWER_1K6HZ, LIS3DH_DATARATE_LOWPOWER_5KHZ
+  // Set DataRate  OPTIONS:  LIS3DH_DATARATE_400_HZ, LIS3DH_DATARATE_LOWPOWER_1K6HZ, LIS3DH_DATARATE_LOWPOWER_5KHZ
+  lis.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); 
   lis2.setDataRate(LIS3DH_DATARATE_LOWPOWER_5KHZ); 
 
   // SD CARD SETUP ====================================================================
-  // see if the card is present and can be initialized:  (Use highest SD clock possible, but lower if has error, 35 Mhz works)
+  // see if the card is present and can be initialized:  
   if (!SD_MMC.begin("/sdcard", ONE_BIT_MODE)) {
     Serial.println("Card init. failed!");
     while (1) yield(); 
   }
 
   // Create filename scheme ====================================================================
-  char filename[15];
-  //  Setup filename to be appropriate for what you are testing
+  char filename[15];  //  Setup filename 
   strcpy(filename, "/DATA00.TXT");
   for (uint8_t i = 0; i < 100; i++) {
     filename[5] = '0' + i/10;
@@ -318,7 +308,7 @@ void setup() {
   }
 
   // Create file and prepare it ============================================================
-  logfile = SD_MMC.open(filename, FILE_WRITE); // O_CREAT | O_WRITE //FILE_WRITE
+  logfile = SD_MMC.open(filename, FILE_WRITE); 
   if( ! logfile ) {
     Serial.print("Couldnt create "); 
     Serial.println(filename);
@@ -326,7 +316,7 @@ void setup() {
   }
   Serial.print("Writing to "); Serial.println(filename);
 
-  //Column labels
+  //Column labels, change if not doing full 6 channel output
   logfile.print("Time uS"); 
   logfile.print(",");
   logfile.print("Sensor 1 X");
@@ -350,7 +340,7 @@ void setup() {
     ,  15000 // This stack size can be checked & adjusted by reading the Stack Highwater
     ,  NULL
     ,  3  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-    ,  NULL 
+    ,  &xGetData
     ,  TaskCore1);
 
   xTaskCreatePinnedToCore(
@@ -359,33 +349,26 @@ void setup() {
     ,  15000 // Stack size
     ,  NULL
     ,  3 // Priority
-    ,  NULL 
+    ,  &xSDWrite
     ,  TaskCore0);
 
     xTaskCreatePinnedToCore(
     TaskLed
-    ,  "LED"
+    ,  "LED" // Use for LED and button interrupts
     ,  10000 // Stack size
     ,  NULL
     ,  1  // Priority
-    ,  NULL 
+    ,  &xLed
     ,  TaskCore1);  
   
 // Create Timer ===============================================================================
-  // Use 1st timer of 4 (counted from zero).
-  // Set 80 divider for prescaler (see ESP32 Technical Reference Manual for more
-  // info).
-  timer = timerBegin(1, 80, true);
-  // Attach onTimer function to our timer.
-  timerAttachInterrupt(timer, &vTimerISR, true);
-  // Set alarm to call onTimer function every second (value in microseconds).
-  // Repeat the alarm (third parameter)
-  timerAlarmWrite(timer, SampleInt, true);
-  // Start an alarm
-  timerAlarmEnable(timer);
+  timer = timerBegin(1, 80, true);    // Set 80 divider for prescaler (see ESP32 Technical Reference Manual for more info).
+  timerAttachInterrupt(timer, &vTimerISR, true);  // Attach &vTimerISR to our timer.
+  timerAlarmWrite(timer, SampleInt, true);  // Repeat the alarm (third parameter)
+  timerAlarmEnable(timer);  // Start an alarm
 
 }
- 
+
 //================================================================================================================================
 void loop()
 {
