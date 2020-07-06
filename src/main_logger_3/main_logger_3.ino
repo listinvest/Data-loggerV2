@@ -1,7 +1,7 @@
 // Data logger:  For measuring acceleration from LIS3DH/s
 // Hardware:  ESP32 dev Board Kit C, Micro SD reader, 2x LIS3DH accels
 // Created:  May 12 2020
-// Updated:
+// Updated:  July 6 2020
 // Uses SPI for Accels, SDMMC for SD
 // Record reliably up to 1000 Hz.  
 // files are saved in .CSV or .TXT format, file name scheme is = DATANN.CSV or .TXT
