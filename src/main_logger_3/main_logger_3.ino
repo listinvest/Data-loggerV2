@@ -135,10 +135,6 @@ void TaskGetData(void *pvParameters)  // Get Data from Sensors Task
       {
         Serial.println("xQueueSend is not working"); 
       }
-    /*if(UBaseType_t res =  xRingbufferSend(buf_handle, ( void * ) &TX_Data_t, sizeof(Data_t), portMAX_DELAY) != pdPASS)
-      {
-        printf("Failed to send in Ring Buffer");
-      }*/
     }
   }
   vTaskDelete( NULL );
@@ -155,22 +151,6 @@ void TaskSDWrite(void *pvParameters)  // Write Data to SD card
       {
         Serial.println("xQueueRecieve is not working");
       }
-      /*//Receive an item from no-split ring buffer
-      if( xRingbufferReceive(buf_handle, &( RX_Data_t ), portMAX_DELAY) != pdPASS );
-
-    //Check received item
-    if (RX_Data_t != NULL) {
-        //Print item
-        for (int i = 0; i < item_size; i++) {
-            printf("%c", item[i]);
-        }
-        printf("\n");
-        //Return Item
-        //vRingbufferReturnItem(buf_handle, (void *)item);
-    } else {
-        //Failed to receive item
-        printf("Failed to receive item\n");
-    }*/
       logfile.print(RX_Data_t.usec);
       logfile.print(',');
       logfile.print(RX_Data_t.value1X,5);
@@ -195,8 +175,9 @@ void TaskSDWrite(void *pvParameters)  // Write Data to SD card
           
           vTaskDelay ( 8000 / portTICK_PERIOD_MS ); // Adding delay just to give SD card time close but may not be needed
           Serial.println("Data Saved to SD Card and Closed"); 
-          vTaskDelay( 20000000 / portTICK_PERIOD_MS ); // Just delay forever essentially
-          //vTaskSuspendAll(); 
+          digitalWrite(LED, LOW); 
+          vTaskSuspend( xGetData );
+          vTaskSuspend( NULL );
         }
 
       //uint16_t FreeSpace = uxQueueSpacesAvailable( DataQueue ); //Use if need to evaluate SD write and queue availability
@@ -219,10 +200,11 @@ void TaskLed(void *pvParameters)  //Always on Task, start task and Led notificat
      if (xSemaphoreTake(ButtonSemaphore, portMAX_DELAY) == pdPASS) 
       {
       digitalWrite(LED, !digitalRead(LED));
-      Serial.println("Button Pressed"); 
-      vTaskDelay( 1200 / portTICK_PERIOD_MS ); 
+      Serial.println("Button Pressed, Writing"); 
       vTaskResume( xGetData );
       vTaskResume( xSDWrite ); 
+      static uint32_t lastMillis = 0;
+      vTaskDelay( 10000 / portTICK_PERIOD_MS );
       } 
     }
 }
@@ -256,7 +238,7 @@ void setup() {
   //Outputs, Pins, Buttons, Etc. 
   pinMode(LED, OUTPUT);  // Turn on LED for notification
   pinMode(BUTTON, INPUT); //button to turn recording on/off, Pulled HIGH to begin
-  digitalWrite(LED, HIGH); // Turn LED on
+  digitalWrite(LED, LOW); // Turn LED on
 
   ButtonSemaphore = xSemaphoreCreateBinary();  //Create button Interrupt Semaphore
   if (ButtonSemaphore != NULL) {
@@ -314,7 +296,7 @@ void setup() {
     Serial.println(filename);
     while (1) yield(); 
   }
-  Serial.print("Writing to "); Serial.println(filename);
+  Serial.print("Ready to write to:"); Serial.println(filename);
 
   //Column labels, change if not doing full 6 channel output
   logfile.print("Time uS"); 
@@ -361,11 +343,20 @@ void setup() {
     ,  &xLed
     ,  TaskCore1);  
   
-// Create Timer ===============================================================================
+  // Create Timer ===============================================================================
   timer = timerBegin(1, 80, true);    // Set 80 divider for prescaler (see ESP32 Technical Reference Manual for more info).
   timerAttachInterrupt(timer, &vTimerISR, true);  // Attach &vTimerISR to our timer.
   timerAlarmWrite(timer, SampleInt, true);  // Repeat the alarm (third parameter)
   timerAlarmEnable(timer);  // Start an alarm
+
+  // LED notification system is ready
+  int i = 0; 
+  for (i=0; i <=7; i++){
+    digitalWrite(LED, HIGH);
+    delay(100);
+    digitalWrite(LED, LOW);
+    delay(100); 
+    }
 
 }
 
