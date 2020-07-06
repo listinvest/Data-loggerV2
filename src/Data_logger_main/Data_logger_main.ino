@@ -1,5 +1,5 @@
 // Data logger:  For measuring acceleration from LIS3DH/s
-// Hardware:  ESP32 dev Board Kit C, Micro SD reader, 2x LIS3DH accels
+// Hardware:  ESP32 dev Board Kit C, Micro SD reader, 2x LIS3DH accels, 1x LED, 1x push button
 // Created:  May 12 2020
 // Updated:  July 6 2020
 // Uses SPI for Accels, SDMMC for SD
