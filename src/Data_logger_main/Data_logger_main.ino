@@ -10,7 +10,7 @@
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 const int SampleRate = 1000; //Hz, Set sample rate here                    +
-const int SampleLength = 10; //Seconds, How long to record                +
+const int SampleLength = 5; //Seconds, How long to record                +
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 //Use ESP32 duo core
@@ -203,7 +203,6 @@ void TaskLed(void *pvParameters)  //Always on Task, start task and Led notificat
       Serial.println("Button Pressed, Writing"); 
       vTaskResume( xGetData );
       vTaskResume( xSDWrite ); 
-      static uint32_t lastMillis = 0;
       vTaskDelay( 10000 / portTICK_PERIOD_MS );
       } 
     }
@@ -250,7 +249,7 @@ void setup() {
 
   //ACCEL Setup and RUN
   if (! lis.begin(0x18)) {   // Sensor 1, change this to 0x19 for alternative i2c address
-  Serial.println("Couldnt start");
+  Serial.println("Couldnt start Sensor 1");
   while (1) yield();
   }
   Serial.println("LIS3DH Sensor 1 found!");
@@ -299,7 +298,7 @@ void setup() {
   Serial.print("Ready to write to:"); Serial.println(filename);
 
   //Column labels, change if not doing full 6 channel output
-  logfile.print("Time uS"); 
+  logfile.print("Time"); 
   logfile.print(",");
   logfile.print("Sensor 1 X");
   logfile.print(",");
